@@ -1,0 +1,94 @@
+{
+  "text_processing": {
+    "english_tokenizer": "nltk",
+    "chinese_tokenizer": "jieba",
+    "ngram_size": 2,
+    "min_phrase_frequency": 3,
+    "normalize_text": true,
+    "remove_punctuation": true,
+    "convert_to_lowercase": true
+  },
+  "stopword_discovery": {
+    "tfidf_threshold": 0.1,
+    "frequency_threshold": 0.8,
+    "static_stopwords_path": "data/stopwords.txt",
+    "enable_dynamic_discovery": true,
+    "min_document_frequency": 2
+  },
+  "graph_construction": {
+    "preserve_isolated_nodes": true,
+    "edge_weight_method": "binary",
+    "window_type": "segment",
+    "min_cooccurrence_count": 1,
+    "use_sparse_matrix": true
+  },
+  "layout_engine": {
+    "algorithm": "force_directed",
+    "random_seed": 42,
+    "cache_enabled": true,
+    "max_iterations": 1000,
+    "convergence_threshold": 1e-06,
+    "spring_constant": 1.0,
+    "repulsion_strength": 1.0
+  },
+  "subgraph_activation": {
+    "activation_method": "reweight",
+    "preserve_global_positions": true,
+    "min_edge_weight": 0.0,
+    "normalize_weights": false
+  },
+  "output": {
+    "base_path": "output/",
+    "generate_visualizations": true,
+    "export_formats": [
+      "json",
+      "graphml",
+      "csv"
+    ],
+    "save_intermediate_results": true,
+    "compression_enabled": false
+  },
+  "performance": {
+    "enable_parallel_processing": true,
+    "max_workers": 4,
+    "batch_size": 1000,
+    "memory_limit_mb": 4096,
+    "enable_profiling": false
+  },
+  "logging": {
+    "level": "INFO",
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    "file_path": "logs/pipeline.log",
+    "max_file_size_mb": 100,
+    "backup_count": 5
+  },
+  "error_handling": {
+    "max_retries": 3,
+    "retry_delay": 1.0,
+    "fallback_strategies": {
+      "text_processing": "simple_split",
+      "phrase_extraction": "word_level",
+      "graph_construction": "minimal_graph"
+    },
+    "continue_on_error": false,
+    "error_report_path": "logs/error_report.json"
+  },
+  "integration": {
+    "easygraph_compatibility": true,
+    "export_formats": [
+      "json",
+      "graphml",
+      "csv",
+      "pickle"
+    ],
+    "multi_view_support": true,
+    "graph_fusion_ready": true,
+    "openrank_integration": true
+  },
+  "validation": {
+    "input_validation": true,
+    "output_validation": true,
+    "intermediate_validation": false,
+    "strict_mode": false
+  }
+}

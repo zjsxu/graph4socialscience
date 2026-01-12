@@ -1,0 +1,2557 @@
+#!/usr/bin/env python3
+"""
+Research-Oriented Text-to-Co-occurrence-Graph Pipeline - Interactive Interface
+
+This is a reproducible, research-oriented interactive interface for text-to-co-occurrence-graph analysis.
+The pipeline enforces a fixed workflow order to ensure reproducibility and traceability:
+
+FIXED PIPELINE ORDER:
+1. Data Input (TOC-segmented documents from directories)
+2. Text Cleaning & Normalization (with preview/export capability)
+3. Token/Phrase Construction (configurable parameters)
+4. Global Co-occurrence Graph Construction (shared node space)
+5. Subgraph Activation (by state/document group from global graph)
+6. Visualization & Export (deterministic layouts, clear output paths)
+
+REPRODUCIBILITY FEATURES:
+- Fixed random seed for deterministic results
+- Explicit co-occurrence window definition (one TOC segment = one window)
+- Visible parameter configuration for all reproducibility-affecting settings
+- Clear distinction between global graph construction and subgraph filtering
+- Traceable output file naming with parameters
+
+Author: Semantic Co-word Network Analysis Research Team
+Version: 4.0.0 (Research Pipeline)
+Date: 2024年
+"""
+
+import os
+import sys
+import json
+import time
+from pathlib import Path
+from typing import Dict, List, Any, Optional
+from datetime import datetime
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+from matplotlib.colors import ListedColormap
+import networkx as nx
+from collections import defaultdict
+from tqdm import tqdm
+
+# 导入管线组件
+try:
+    from semantic_coword_pipeline.pipeline import SemanticCowordPipeline
+    from semantic_coword_pipeline.core.config import Config
+    from semantic_coword_pipeline.core.logger import PipelineLogger
+    from semantic_coword_pipeline.core.data_models import TOCDocument
+    PIPELINE_AVAILABLE = True
+except ImportError as e:
+    PIPELINE_AVAILABLE = False
+    IMPORT_ERROR = str(e)
+
+
+class ResearchPipelineCLI:
+    """Research-Oriented Text-to-Co-occurrence-Graph Pipeline Interface"""
+    
+    def __init__(self):
+        self.pipeline = None
+        self.input_directory = None
+        self.input_files = []
+        self.output_dir = "research_pipeline_output"
+        
+        # Pipeline state tracking
+        self.pipeline_state = {
+            'data_loaded': False,
+            'text_cleaned': False,
+            'phrases_constructed': False,
+            'global_graph_built': False,
+            'subgraphs_activated': False,
+            'results_exported': False
+        }
+        
+        # Reproducibility controls - all parameters visible and configurable
+        self.reproducibility_config = {
+            'random_seed': 42,
+            'cooccurrence_window': 'toc_segment',  # One TOC segment = one window
+            'edge_weight_strategy': 'frequency_count',
+            'phrase_type': 'mixed',  # word, bigram, or mixed
+            'stopword_strategy': 'dynamic_tfidf',  # static_list or dynamic_tfidf
+            'layout_algorithm': 'spring_deterministic',
+            'min_phrase_frequency': 2,
+            'language_detection': 'auto'
+        }
+        
+        # Processing results storage - GRAPH OBJECTS as first-class citizens
+        self.cleaned_text_data = None
+        self.phrase_data = None
+        
+        # CORE GRAPH OBJECTS (not just serialized data)
+        self.global_graph_object = None  # NetworkX graph with positions and attributes
+        self.global_layout_positions = None  # Fixed 2D positions for all nodes
+        self.state_subgraph_objects = {}  # NetworkX subgraph views with shared positions
+        
+        # Legacy data structures (for export compatibility only)
+        self.global_graph = None  # Will be deprecated in favor of graph_object
+        self.state_subgraphs = {}  # Will be deprecated in favor of subgraph_objects
+        self.visualization_paths = {}
+        
+        # Initialize pipeline
+        self.initialize_pipeline()
+    
+    def initialize_pipeline(self):
+        """Initialize research pipeline with reproducibility controls"""
+        print("=" * 80)
+        print("Research-Oriented Text-to-Co-occurrence-Graph Pipeline")
+        print("=" * 80)
+        print("🔬 REPRODUCIBLE RESEARCH WORKFLOW")
+        print("📋 Fixed Pipeline Order: Data Input → Text Cleaning → Phrase Construction")
+        print("   → Global Graph → Subgraph Activation → Visualization & Export")
+        print("🎯 Reproducibility Controls: Fixed seed, explicit parameters, traceable outputs")
+        print("=" * 80)
+        
+        if not PIPELINE_AVAILABLE:
+            print(f"❌ ERROR: Pipeline components unavailable")
+            print(f"   Details: {IMPORT_ERROR}")
+            print("   Please ensure all dependencies are correctly installed.")
+            return False
+        
+        try:
+            print("🔄 Initializing research pipeline...")
+            self.pipeline = SemanticCowordPipeline()
+            print("✅ Research pipeline initialized successfully!")
+            print(f"🌱 Random seed set to: {self.reproducibility_config['random_seed']}")
+            print(f"🪟 Co-occurrence window: {self.reproducibility_config['cooccurrence_window']}")
+            return True
+        except Exception as e:
+            print(f"❌ Pipeline initialization failed: {e}")
+            return False
+    
+    def print_menu(self):
+        """Display research pipeline menu with fixed workflow order"""
+        print("\n" + "=" * 80)
+        print("RESEARCH PIPELINE MENU - Fixed Workflow Order")
+        print("=" * 80)
+        
+        # Show current pipeline state
+        print("📊 PIPELINE STATE:")
+        state_indicators = []
+        for step, completed in self.pipeline_state.items():
+            indicator = "✅" if completed else "⏳"
+            state_indicators.append(f"{indicator} {step.replace('_', ' ').title()}")
+        print("   " + " → ".join(state_indicators))
+        print()
+        
+        print("🔬 RESEARCH WORKFLOW (Execute in Order):")
+        print("=" * 50)
+        print("1. DATA INPUT & DIRECTORY PROCESSING")
+        print("   1.1 Select Input Directory (batch process all files)")
+        print("   1.2 Set Output Directory")
+        print("   1.3 View Current Data Settings")
+        print()
+        print("2. TEXT CLEANING & NORMALIZATION")
+        print("   2.1 Clean & Normalize Text (with preview)")
+        print("   2.2 Export Cleaned Text Data")
+        print("   2.3 View Text Cleaning Results")
+        print()
+        print("3. TOKEN/PHRASE CONSTRUCTION")
+        print("   3.1 Configure Phrase Parameters")
+        print("   3.2 Extract Tokens & Phrases")
+        print("   3.3 View Phrase Statistics")
+        print()
+        print("4. GLOBAL CO-OCCURRENCE GRAPH CONSTRUCTION")
+        print("   4.1 Build Global Graph (shared node space)")
+        print("   4.2 View Global Graph Statistics")
+        print("   4.3 Export Global Graph Data")
+        print()
+        print("5. SUBGRAPH ACTIVATION (from Global Graph)")
+        print("   5.1 Activate State-based Subgraphs")
+        print("   5.2 View Subgraph Comparisons")
+        print("   5.3 Export Subgraph Data")
+        print()
+        print("6. VISUALIZATION & EXPORT")
+        print("   6.1 Generate Deterministic Visualizations")
+        print("   6.2 View Output Image Paths")
+        print("   6.3 Export Complete Results")
+        print("   6.4 View Graph Nodes & Data Details")
+        print()
+        print("🔧 REPRODUCIBILITY CONTROLS:")
+        print("   R.1 Configure Reproducibility Parameters")
+        print("   R.2 View All Parameter Settings")
+        print("   R.3 Export Parameter Configuration")
+        print()
+        print("🛠️ UTILITIES:")
+        print("   U.1 Create Sample Research Data")
+        print("   U.2 System & Pipeline Status")
+        print("   U.3 Research Workflow Help")
+        print()
+        print("0. Exit Pipeline")
+        print("=" * 80)
+    
+    def get_user_choice(self, prompt="请选择操作", valid_choices=None):
+        """获取用户选择"""
+        while True:
+            try:
+                choice = input(f"\n{prompt}: ").strip()
+                if valid_choices and choice not in valid_choices:
+                    print(f"❌ 无效选择，请输入: {', '.join(valid_choices)}")
+                    continue
+                return choice
+            except KeyboardInterrupt:
+                print("\n\n👋 程序被用户中断，再见！")
+                sys.exit(0)
+            except EOFError:
+                print("\n\n👋 程序结束，再见！")
+                sys.exit(0)
+    
+    def select_input_directory(self):
+        """Select input directory for batch processing"""
+        print("\n📁 INPUT DIRECTORY SELECTION")
+        print("-" * 50)
+        print("🔬 Research Pipeline: Directory input supports batch processing")
+        print("📂 All valid files in the directory will be automatically processed")
+        print()
+        
+        print("Input options:")
+        print("1. Enter directory path (batch process all files)")
+        print("2. Create sample research data directory")
+        print("3. Return to main menu")
+        
+        choice = self.get_user_choice("Select input method", ["1", "2", "3"])
+        
+        if choice == "1":
+            dir_path = input("\n📂 Enter directory path: ").strip()
+            if not dir_path:
+                print("⚠️ No directory specified")
+                return
+            
+            if not os.path.exists(dir_path):
+                print(f"❌ Directory does not exist: {dir_path}")
+                return
+            
+            if not os.path.isdir(dir_path):
+                print(f"❌ Path is not a directory: {dir_path}")
+                return
+            
+            # Scan directory for valid files
+            self.input_directory = dir_path
+            self.input_files = []
+            
+            print(f"\n🔍 Scanning directory: {dir_path}")
+            
+            # Recursively find valid files
+            valid_extensions = {'.json', '.txt', '.md'}
+            for root, dirs, files in os.walk(dir_path):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    file_ext = os.path.splitext(file)[1].lower()
+                    
+                    if file_ext in valid_extensions:
+                        self.input_files.append(file_path)
+                        print(f"   ✅ Found: {os.path.relpath(file_path, dir_path)}")
+                    else:
+                        print(f"   ⏭️ Skipped (unsupported): {os.path.relpath(file_path, dir_path)}")
+            
+            if self.input_files:
+                print(f"\n✅ Directory scan complete: {len(self.input_files)} valid files found")
+                self.pipeline_state['data_loaded'] = True
+            else:
+                print("⚠️ No valid files found in directory")
+                print("   Supported formats: .json, .txt, .md")
+        
+        elif choice == "2":
+            self.create_sample_research_data()
+            
+        elif choice == "3":
+            return
+    
+    def set_output_directory(self):
+        """Set output directory with research-oriented structure"""
+        print("\n📂 OUTPUT DIRECTORY CONFIGURATION")
+        print("-" * 50)
+        print(f"Current output directory: {self.output_dir}")
+        print("🔬 Research pipeline will create structured subdirectories:")
+        print("   📁 cleaned_text/     - Text cleaning results")
+        print("   📁 global_graph/     - Global co-occurrence graph")
+        print("   📁 subgraphs/        - State-based subgraphs")
+        print("   📁 visualizations/   - Deterministic layout images")
+        print("   📁 exports/          - Final research outputs")
+        print("   📁 parameters/       - Reproducibility configurations")
+        print()
+        
+        new_dir = input("Enter new output directory (press Enter to keep current): ").strip()
+        if new_dir:
+            self.output_dir = new_dir
+            print(f"✅ Output directory set to: {self.output_dir}")
+        else:
+            print("📁 Keeping current output directory")
+        
+        # Create directory structure
+        os.makedirs(self.output_dir, exist_ok=True)
+        print(f"📁 Output directory ready: {os.path.abspath(self.output_dir)}")
+    
+    def show_data_settings(self):
+        """Display current data input settings"""
+        print("\n📋 CURRENT DATA SETTINGS")
+        print("-" * 50)
+        print(f"Input directory: {self.input_directory or 'Not set'}")
+        print(f"Output directory: {self.output_dir}")
+        print(f"Valid files found: {len(self.input_files)}")
+        
+        if self.input_files:
+            print("\nInput files (showing first 10):")
+            for i, file_path in enumerate(self.input_files[:10], 1):
+                rel_path = os.path.relpath(file_path, self.input_directory) if self.input_directory else file_path
+                print(f"   {i:2d}. {rel_path}")
+            if len(self.input_files) > 10:
+                print(f"   ... and {len(self.input_files) - 10} more files")
+        else:
+            print("⚠️ No input files selected")
+            print("   Use option 1.1 to select input directory")
+    
+    def clean_and_normalize_text(self):
+        """Clean and normalize text with preview capability"""
+        if not self.validate_pipeline_step('data_loaded', "Please load input data first (step 1.1)"):
+            return
+        
+        print("\n🧹 TEXT CLEANING & NORMALIZATION")
+        print("-" * 50)
+        print("🔬 Research Pipeline: Text cleaning with transparency and debugging")
+        print(f"🌱 Using random seed: {self.reproducibility_config['random_seed']}")
+        print(f"🗣️ Language detection: {self.reproducibility_config['language_detection']}")
+        
+        try:
+            print("⏳ Loading and cleaning text data...")
+            input_data = self.load_input_data()
+            
+            # Simulate text cleaning process (replace with actual pipeline call)
+            cleaned_documents = []
+            total_tokens = 0
+            
+            # Add progress bar for text cleaning
+            for doc in tqdm(input_data, desc="🧹 Cleaning documents", unit="doc"):
+                # Simulate cleaning
+                cleaned_text = doc['text'].lower().strip()
+                tokens = cleaned_text.split()
+                total_tokens += len(tokens)
+                
+                cleaned_doc = {
+                    'segment_id': doc['segment_id'],
+                    'title': doc['title'],
+                    'original_text': doc['text'],
+                    'cleaned_text': cleaned_text,
+                    'tokens': tokens,
+                    'token_count': len(tokens),
+                    'state': doc['state'],
+                    'language': doc['language']
+                }
+                cleaned_documents.append(cleaned_doc)
+            
+            self.cleaned_text_data = cleaned_documents
+            
+            print(f"✅ Text cleaning completed!")
+            print(f"📊 Documents processed: {len(cleaned_documents)}")
+            print(f"📊 Total tokens: {total_tokens}")
+            print(f"📊 Average tokens per document: {total_tokens/len(cleaned_documents):.1f}")
+            
+            # Show preview
+            print("\n📋 CLEANED TEXT PREVIEW (first document):")
+            print("-" * 40)
+            first_doc = cleaned_documents[0]
+            print(f"Document ID: {first_doc['segment_id']}")
+            print(f"Title: {first_doc['title']}")
+            print(f"Original: {first_doc['original_text'][:100]}...")
+            print(f"Cleaned:  {first_doc['cleaned_text'][:100]}...")
+            print(f"Tokens:   {first_doc['token_count']} tokens")
+            
+            self.pipeline_state['text_cleaned'] = True
+            
+        except Exception as e:
+            print(f"❌ Text cleaning failed: {e}")
+    
+    def export_cleaned_text(self):
+        """Export cleaned text data for transparency"""
+        if not self.validate_pipeline_step('text_cleaned', "Please clean text data first (step 2.1)"):
+            return
+        
+        print("\n💾 EXPORT CLEANED TEXT DATA")
+        print("-" * 50)
+        
+        try:
+            # Create cleaned text directory
+            cleaned_dir = os.path.join(self.output_dir, "cleaned_text")
+            os.makedirs(cleaned_dir, exist_ok=True)
+            
+            # Export options
+            print("Export formats:")
+            print("1. JSON (structured data with metadata)")
+            print("2. TXT (plain text tokens)")
+            print("3. Both formats")
+            
+            choice = self.get_user_choice("Select export format", ["1", "2", "3"])
+            
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            if choice in ["1", "3"]:
+                # Export JSON
+                json_file = os.path.join(cleaned_dir, f"cleaned_text_data_{timestamp}.json")
+                with open(json_file, 'w', encoding='utf-8') as f:
+                    json.dump(self.cleaned_text_data, f, indent=2, ensure_ascii=False)
+                print(f"✅ JSON exported: {json_file}")
+            
+            if choice in ["2", "3"]:
+                # Export plain text tokens
+                txt_file = os.path.join(cleaned_dir, f"cleaned_tokens_{timestamp}.txt")
+                with open(txt_file, 'w', encoding='utf-8') as f:
+                    f.write("# Cleaned Text Tokens Export\n")
+                    f.write(f"# Generated: {datetime.now().isoformat()}\n")
+                    f.write(f"# Random Seed: {self.reproducibility_config['random_seed']}\n\n")
+                    
+                    for doc in self.cleaned_text_data:
+                        f.write(f"## Document: {doc['segment_id']}\n")
+                        f.write(f"# Title: {doc['title']}\n")
+                        f.write(f"# Tokens: {doc['token_count']}\n")
+                        f.write(" ".join(doc['tokens']) + "\n\n")
+                
+                print(f"✅ TXT exported: {txt_file}")
+            
+            print(f"📁 Cleaned text data exported to: {cleaned_dir}")
+            
+        except Exception as e:
+            print(f"❌ Export failed: {e}")
+    
+    def view_text_cleaning_results(self):
+        """View detailed text cleaning results"""
+        if not self.validate_pipeline_step('text_cleaned', "Please clean text data first (step 2.1)"):
+            return
+        
+        print("\n📊 TEXT CLEANING RESULTS")
+        print("-" * 50)
+        
+        if not self.cleaned_text_data:
+            print("⚠️ No cleaned text data available")
+            return
+        
+        # Statistics
+        total_docs = len(self.cleaned_text_data)
+        total_tokens = sum(doc['token_count'] for doc in self.cleaned_text_data)
+        avg_tokens = total_tokens / total_docs
+        
+        print(f"📊 CLEANING STATISTICS:")
+        print(f"   Documents processed: {total_docs}")
+        print(f"   Total tokens: {total_tokens}")
+        print(f"   Average tokens per document: {avg_tokens:.1f}")
+        print(f"   Random seed used: {self.reproducibility_config['random_seed']}")
+        
+        # Language distribution
+        languages = {}
+        for doc in self.cleaned_text_data:
+            lang = doc['language']
+            languages[lang] = languages.get(lang, 0) + 1
+        
+        print(f"\n🗣️ LANGUAGE DISTRIBUTION:")
+        for lang, count in languages.items():
+            print(f"   {lang}: {count} documents")
+        
+        # State distribution
+        states = {}
+        for doc in self.cleaned_text_data:
+            state = doc['state']
+            states[state] = states.get(state, 0) + 1
+        
+        print(f"\n🗺️ STATE DISTRIBUTION:")
+        for state, count in states.items():
+            print(f"   {state}: {count} documents")
+        
+        # Show sample
+        print(f"\n📋 SAMPLE CLEANED DOCUMENTS:")
+        for i, doc in enumerate(self.cleaned_text_data[:3], 1):
+            print(f"\n   {i}. {doc['segment_id']} ({doc['language']}, {doc['state']})")
+            print(f"      Title: {doc['title']}")
+            print(f"      Tokens: {doc['token_count']}")
+            print(f"      Sample: {' '.join(doc['tokens'][:10])}...")
+    
+    def configure_reproducibility_parameters(self):
+        """Configure all reproducibility-affecting parameters"""
+        print("\n🔬 REPRODUCIBILITY PARAMETER CONFIGURATION")
+        print("-" * 60)
+        print("🎯 All parameters that affect reproducibility are configurable here")
+        print("📋 Current settings will be saved for complete traceability")
+        print()
+        
+        # Random seed
+        print(f"🌱 Random Seed: {self.reproducibility_config['random_seed']}")
+        print("   Controls: layout algorithms, sampling, any randomized processes")
+        new_seed = input("Enter new random seed (press Enter to keep current): ").strip()
+        if new_seed:
+            try:
+                self.reproducibility_config['random_seed'] = int(new_seed)
+                print(f"✅ Random seed set to: {new_seed}")
+            except ValueError:
+                print("❌ Invalid seed, keeping current value")
+        
+        # Co-occurrence window definition
+        print(f"\n🪟 Co-occurrence Window: {self.reproducibility_config['cooccurrence_window']}")
+        print("   Options: toc_segment (one TOC segment = one window), sentence, paragraph")
+        window_options = ['toc_segment', 'sentence', 'paragraph']
+        print(f"   Available: {', '.join(window_options)}")
+        new_window = input("Enter co-occurrence window type (press Enter to keep current): ").strip()
+        if new_window and new_window in window_options:
+            self.reproducibility_config['cooccurrence_window'] = new_window
+            print(f"✅ Co-occurrence window set to: {new_window}")
+        
+        # Edge weight strategy
+        print(f"\n⚖️ Edge Weight Strategy: {self.reproducibility_config['edge_weight_strategy']}")
+        print("   Options: frequency_count, pmi, tfidf_weighted")
+        weight_options = ['frequency_count', 'pmi', 'tfidf_weighted']
+        print(f"   Available: {', '.join(weight_options)}")
+        new_weight = input("Enter edge weight strategy (press Enter to keep current): ").strip()
+        if new_weight and new_weight in weight_options:
+            self.reproducibility_config['edge_weight_strategy'] = new_weight
+            print(f"✅ Edge weight strategy set to: {new_weight}")
+        
+        # Phrase type
+        print(f"\n📝 Phrase Type: {self.reproducibility_config['phrase_type']}")
+        print("   Options: word (unigrams), bigram (2-grams), mixed (both)")
+        phrase_options = ['word', 'bigram', 'mixed']
+        print(f"   Available: {', '.join(phrase_options)}")
+        new_phrase = input("Enter phrase type (press Enter to keep current): ").strip()
+        if new_phrase and new_phrase in phrase_options:
+            self.reproducibility_config['phrase_type'] = new_phrase
+            print(f"✅ Phrase type set to: {new_phrase}")
+        
+        # Stopword strategy
+        print(f"\n🚫 Stopword Strategy: {self.reproducibility_config['stopword_strategy']}")
+        print("   Options: static_list (predefined), dynamic_tfidf (TF-IDF based)")
+        stopword_options = ['static_list', 'dynamic_tfidf']
+        print(f"   Available: {', '.join(stopword_options)}")
+        new_stopword = input("Enter stopword strategy (press Enter to keep current): ").strip()
+        if new_stopword and new_stopword in stopword_options:
+            self.reproducibility_config['stopword_strategy'] = new_stopword
+            print(f"✅ Stopword strategy set to: {new_stopword}")
+        
+        # Minimum phrase frequency
+        print(f"\n📊 Minimum Phrase Frequency: {self.reproducibility_config['min_phrase_frequency']}")
+        print("   Controls: phrase filtering threshold")
+        new_freq = input("Enter minimum phrase frequency (press Enter to keep current): ").strip()
+        if new_freq:
+            try:
+                freq = int(new_freq)
+                if freq > 0:
+                    self.reproducibility_config['min_phrase_frequency'] = freq
+                    print(f"✅ Minimum phrase frequency set to: {freq}")
+                else:
+                    print("❌ Frequency must be positive")
+            except ValueError:
+                print("❌ Invalid frequency, keeping current value")
+        
+        print(f"\n✅ Reproducibility parameters updated!")
+        print("💾 Use option R.3 to export these settings for documentation")
+    
+    def view_all_parameters(self):
+        """Display all reproducibility parameters"""
+        print("\n📋 ALL REPRODUCIBILITY PARAMETERS")
+        print("-" * 60)
+        print("🔬 These parameters affect reproducibility and are fully traceable:")
+        print()
+        
+        for key, value in self.reproducibility_config.items():
+            param_name = key.replace('_', ' ').title()
+            print(f"   {param_name:25}: {value}")
+        
+        print(f"\n📁 Output Directory: {self.output_dir}")
+        print(f"📂 Input Directory:  {self.input_directory or 'Not set'}")
+        print(f"📊 Input Files:      {len(self.input_files)} files")
+    
+    def export_parameter_configuration(self):
+        """Export parameter configuration for reproducibility"""
+        print("\n💾 EXPORT PARAMETER CONFIGURATION")
+        print("-" * 50)
+        
+        try:
+            # Create parameters directory
+            params_dir = os.path.join(self.output_dir, "parameters")
+            os.makedirs(params_dir, exist_ok=True)
+            
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            config_file = os.path.join(params_dir, f"reproducibility_config_{timestamp}.json")
+            
+            # Prepare configuration data
+            config_data = {
+                'export_timestamp': datetime.now().isoformat(),
+                'pipeline_version': '4.0.0',
+                'reproducibility_parameters': self.reproducibility_config.copy(),
+                'input_settings': {
+                    'input_directory': self.input_directory,
+                    'input_files_count': len(self.input_files),
+                    'output_directory': self.output_dir
+                },
+                'pipeline_state': self.pipeline_state.copy()
+            }
+            
+            # Export configuration
+            with open(config_file, 'w', encoding='utf-8') as f:
+                json.dump(config_data, f, indent=2, ensure_ascii=False)
+            
+            print(f"✅ Configuration exported: {config_file}")
+            print("📋 This file contains all parameters needed to reproduce results")
+            
+        except Exception as e:
+            print(f"❌ Export failed: {e}")
+    
+    def validate_pipeline_step(self, required_step, error_message):
+        """Validate that required pipeline step is completed"""
+        if not self.pipeline_state.get(required_step, False):
+            print(f"⚠️ WORKFLOW ERROR: {error_message}")
+            print("🔬 Research Pipeline: Steps must be executed in order for reproducibility")
+            return False
+        return True
+    
+    def configure_phrase_parameters(self):
+        """Configure phrase extraction parameters"""
+        if not self.validate_pipeline_step('text_cleaned', "Please clean text data first (step 2.1)"):
+            return
+        
+        print("\n📝 PHRASE PARAMETER CONFIGURATION")
+        print("-" * 50)
+        print("🔬 Configure parameters for token and phrase construction")
+        print()
+        
+        # Show current phrase settings
+        print("CURRENT PHRASE SETTINGS:")
+        print(f"   Phrase Type: {self.reproducibility_config['phrase_type']}")
+        print(f"   Min Frequency: {self.reproducibility_config['min_phrase_frequency']}")
+        print(f"   Stopword Strategy: {self.reproducibility_config['stopword_strategy']}")
+        print()
+        
+        print("These parameters are also configurable in Reproducibility Controls (R.1)")
+        print("✅ Phrase parameters ready for extraction")
+    
+    def extract_tokens_and_phrases(self):
+        """Extract tokens and phrases from cleaned text"""
+        if not self.validate_pipeline_step('text_cleaned', "Please clean text data first (step 2.1)"):
+            return
+        
+        print("\n🔍 TOKEN & PHRASE EXTRACTION")
+        print("-" * 50)
+        print(f"🌱 Using random seed: {self.reproducibility_config['random_seed']}")
+        print(f"📝 Phrase type: {self.reproducibility_config['phrase_type']}")
+        print(f"📊 Min frequency: {self.reproducibility_config['min_phrase_frequency']}")
+        
+        try:
+            # Simulate phrase extraction (replace with actual pipeline call)
+            print("⏳ Extracting tokens and phrases...")
+            
+            all_phrases = []
+            phrase_counts = {}
+            
+            for doc in tqdm(self.cleaned_text_data, desc="🔍 Extracting phrases", unit="doc"):
+                tokens = doc['tokens']
+                
+                # Extract unigrams
+                if self.reproducibility_config['phrase_type'] in ['word', 'mixed']:
+                    for token in tokens:
+                        if len(token) > 2:  # Filter short tokens
+                            all_phrases.append(token)
+                            phrase_counts[token] = phrase_counts.get(token, 0) + 1
+                
+                # Extract bigrams
+                if self.reproducibility_config['phrase_type'] in ['bigram', 'mixed']:
+                    for i in range(len(tokens) - 1):
+                        bigram = f"{tokens[i]} {tokens[i+1]}"
+                        all_phrases.append(bigram)
+                        phrase_counts[bigram] = phrase_counts.get(bigram, 0) + 1
+            
+            # Filter by minimum frequency
+            min_freq = self.reproducibility_config['min_phrase_frequency']
+            filtered_phrases = {phrase: count for phrase, count in phrase_counts.items() 
+                              if count >= min_freq}
+            
+            self.phrase_data = {
+                'all_phrases': all_phrases,
+                'phrase_counts': phrase_counts,
+                'filtered_phrases': filtered_phrases,
+                'extraction_params': self.reproducibility_config.copy()
+            }
+            
+            print(f"✅ Phrase extraction completed!")
+            print(f"📊 Total phrase instances: {len(all_phrases)}")
+            print(f"📊 Unique phrases: {len(phrase_counts)}")
+            print(f"📊 Phrases above threshold: {len(filtered_phrases)}")
+            
+            self.pipeline_state['phrases_constructed'] = True
+            
+        except Exception as e:
+            print(f"❌ Phrase extraction failed: {e}")
+    
+    def view_phrase_statistics(self):
+        """View phrase extraction statistics"""
+        if not self.validate_pipeline_step('phrases_constructed', "Please extract phrases first (step 3.2)"):
+            return
+        
+        print("\n📊 PHRASE STATISTICS")
+        print("-" * 50)
+        
+        if not hasattr(self, 'phrase_data'):
+            print("⚠️ No phrase data available")
+            return
+        
+        phrase_counts = self.phrase_data['phrase_counts']
+        filtered_phrases = self.phrase_data['filtered_phrases']
+        
+        print(f"📊 EXTRACTION RESULTS:")
+        print(f"   Total phrase instances: {len(self.phrase_data['all_phrases'])}")
+        print(f"   Unique phrases: {len(phrase_counts)}")
+        print(f"   Phrases above threshold: {len(filtered_phrases)}")
+        print(f"   Minimum frequency threshold: {self.phrase_data['extraction_params']['min_phrase_frequency']}")
+        
+        # Top phrases
+        sorted_phrases = sorted(filtered_phrases.items(), key=lambda x: x[1], reverse=True)
+        print(f"\n🔝 TOP 10 PHRASES:")
+        for i, (phrase, count) in enumerate(sorted_phrases[:10], 1):
+            print(f"   {i:2d}. {phrase} (count: {count})")
+    
+    def build_global_graph(self):
+        """Build global co-occurrence graph as a true NetworkX graph object (shared node space)"""
+        if not self.validate_pipeline_step('phrases_constructed', "Please extract phrases first (step 3.2)"):
+            return
+        
+        print("\n🌐 GLOBAL CO-OCCURRENCE GRAPH CONSTRUCTION")
+        print("-" * 60)
+        print("🔬 Building shared node space as NetworkX graph object")
+        print(f"🪟 Co-occurrence window: {self.reproducibility_config['cooccurrence_window']}")
+        print(f"⚖️ Edge weight strategy: {self.reproducibility_config['edge_weight_strategy']}")
+        
+        # Add graph construction parameters for structural filtering
+        self.graph_construction_config = {
+            'edge_density_reduction': 0.1,  # Keep top 10% of edges by weight
+            'min_edge_weight': 2,  # Minimum co-occurrence count
+            'core_node_percentile': 0.2,  # Top 20% nodes are "core"
+            'community_layout_separation': 2.0,  # Separation factor between communities
+        }
+        
+        try:
+            print("⏳ Constructing global co-occurrence NetworkX graph...")
+            
+            # Set random seed for deterministic layout
+            np.random.seed(self.reproducibility_config['random_seed'])
+            
+            filtered_phrases = self.phrase_data['filtered_phrases']
+            phrase_list = list(filtered_phrases.keys())
+            
+            # CREATE NETWORKX GRAPH OBJECT (not just adjacency data)
+            self.global_graph_object = nx.Graph()
+            
+            # Add all phrases as nodes with attributes
+            for phrase in phrase_list:
+                self.global_graph_object.add_node(
+                    phrase, 
+                    frequency=filtered_phrases[phrase],
+                    phrase_type='bigram' if ' ' in phrase else 'unigram'
+                )
+            
+            # Calculate co-occurrences and add as weighted edges
+            cooccurrence_counts = defaultdict(int)
+            
+            # Process each document for co-occurrences
+            for doc in tqdm(self.cleaned_text_data, desc="🌐 Building co-occurrences", unit="doc"):
+                doc_phrases = []
+                tokens = doc['tokens']
+                
+                # Extract phrases from this document
+                if self.reproducibility_config['phrase_type'] in ['word', 'mixed']:
+                    doc_phrases.extend([token for token in tokens if token in filtered_phrases])
+                
+                if self.reproducibility_config['phrase_type'] in ['bigram', 'mixed']:
+                    for i in range(len(tokens) - 1):
+                        bigram = f"{tokens[i]} {tokens[i+1]}"
+                        if bigram in filtered_phrases:
+                            doc_phrases.append(bigram)
+                
+                # Calculate co-occurrences within document (TOC segment window)
+                for i, phrase1 in enumerate(doc_phrases):
+                    for phrase2 in doc_phrases[i+1:]:
+                        if phrase1 != phrase2:
+                            edge = tuple(sorted([phrase1, phrase2]))
+                            cooccurrence_counts[edge] += 1
+            
+            # STRUCTURAL FILTERING: Apply edge filtering at construction time
+            print("🔧 Applying structural filtering to reduce graph density...")
+            
+            # Filter edges by minimum weight threshold
+            min_weight = self.graph_construction_config['min_edge_weight']
+            filtered_edges = {edge: weight for edge, weight in cooccurrence_counts.items() 
+                            if weight >= min_weight}
+            
+            print(f"   📊 Raw edges: {len(cooccurrence_counts)}")
+            print(f"   📊 After min weight filter ({min_weight}): {len(filtered_edges)}")
+            
+            # Apply density reduction: keep only top percentile of edges by weight
+            if filtered_edges:
+                edge_weights = list(filtered_edges.values())
+                density_threshold = np.percentile(edge_weights, 
+                                                (1 - self.graph_construction_config['edge_density_reduction']) * 100)
+                
+                final_edges = {edge: weight for edge, weight in filtered_edges.items() 
+                             if weight >= density_threshold}
+                
+                print(f"   📊 After density reduction ({self.graph_construction_config['edge_density_reduction']*100:.1f}%): {len(final_edges)}")
+            else:
+                final_edges = {}
+            
+            # Add filtered edges to NetworkX graph
+            for (phrase1, phrase2), weight in final_edges.items():
+                self.global_graph_object.add_edge(phrase1, phrase2, weight=weight, raw_weight=weight)
+            
+            # Store raw co-occurrence counts for reference
+            self.raw_cooccurrence_counts = cooccurrence_counts
+            
+            # COMPUTE NODE IMPORTANCE AND ROLES
+            print("📊 Computing node importance and roles...")
+            
+            with tqdm(total=3, desc="📊 Node importance computation", unit="measure") as pbar:
+                pbar.set_description("📊 Computing degree centrality")
+                degree_centrality = nx.degree_centrality(self.global_graph_object)
+                pbar.update(1)
+                
+                pbar.set_description("📊 Computing weighted degree")
+                weighted_degree = dict(self.global_graph_object.degree(weight='weight'))
+                # Normalize weighted degree
+                max_weighted_degree = max(weighted_degree.values()) if weighted_degree else 1
+                weighted_degree_norm = {node: deg/max_weighted_degree for node, deg in weighted_degree.items()}
+                pbar.update(1)
+                
+                pbar.set_description("📊 Computing PageRank")
+                try:
+                    pagerank = nx.pagerank(self.global_graph_object, weight='weight')
+                except:
+                    # Fallback to degree centrality if PageRank fails
+                    pagerank = degree_centrality
+                pbar.update(1)
+            
+            # Assign node roles based on importance
+            print("🎭 Assigning node roles (core vs periphery)...")
+            
+            # Combine multiple importance measures
+            node_importance = {}
+            for node in self.global_graph_object.nodes():
+                importance = (
+                    0.4 * degree_centrality.get(node, 0) +
+                    0.4 * weighted_degree_norm.get(node, 0) +
+                    0.2 * pagerank.get(node, 0)
+                )
+                node_importance[node] = importance
+            
+            # Determine core nodes (top percentile)
+            importance_threshold = np.percentile(list(node_importance.values()), 
+                                               (1 - self.graph_construction_config['core_node_percentile']) * 100)
+            
+            node_roles = {}
+            core_nodes = []
+            for node, importance in node_importance.items():
+                if importance >= importance_threshold:
+                    node_roles[node] = 'core'
+                    core_nodes.append(node)
+                else:
+                    node_roles[node] = 'periphery'
+            
+            print(f"   🎯 Core nodes: {len(core_nodes)} ({len(core_nodes)/len(node_importance)*100:.1f}%)")
+            print(f"   🌐 Periphery nodes: {len(node_importance) - len(core_nodes)}")
+            
+            # Store node attributes
+            nx.set_node_attributes(self.global_graph_object, degree_centrality, 'degree_centrality')
+            nx.set_node_attributes(self.global_graph_object, weighted_degree_norm, 'weighted_degree')
+            nx.set_node_attributes(self.global_graph_object, pagerank, 'pagerank')
+            nx.set_node_attributes(self.global_graph_object, node_importance, 'importance')
+            nx.set_node_attributes(self.global_graph_object, node_roles, 'role')
+            
+            # COMPUTE DETERMINISTIC 2D LAYOUT (core requirement)
+            print("🎯 Computing deterministic 2D layout...")
+            
+            # 修复的布局计算 - 分批显示真实进度
+            iterations = 50
+            batch_size = 10
+            with tqdm(total=iterations, desc="🎯 Spring layout进度", unit="iter") as pbar:
+                pos = None
+                for i in range(0, iterations, batch_size):
+                    current_iterations = min(batch_size, iterations - i)
+                    
+                    if pos is None:
+                        pos = nx.spring_layout(
+                            self.global_graph_object,
+                            k=1.0,
+                            iterations=current_iterations,
+                            seed=self.reproducibility_config['random_seed']
+                        )
+                    else:
+                        pos = nx.spring_layout(
+                            self.global_graph_object,
+                            k=1.0,
+                            iterations=current_iterations,
+                            pos=pos,
+                            seed=self.reproducibility_config['random_seed']
+                        )
+                    
+                    pbar.update(current_iterations)
+                    time.sleep(0.02)  # 短暂延迟显示进度
+                
+                self.global_layout_positions = pos
+            
+            # Store positions as node attributes for persistence
+            nx.set_node_attributes(self.global_graph_object, self.global_layout_positions, 'pos')
+            
+            # COMMUNITY DETECTION ON FILTERED GRAPH
+            print("🏘️ Detecting communities on filtered graph...")
+            try:
+                with tqdm(total=1, desc="🏘️ Community detection", unit="step") as pbar:
+                    communities = nx.community.greedy_modularity_communities(self.global_graph_object)
+                    pbar.update(1)
+                    
+                community_map = {}
+                with tqdm(communities, desc="🏘️ Assigning communities", unit="community") as pbar:
+                    for i, community in enumerate(pbar):
+                        for node in community:
+                            community_map[node] = i
+                
+                nx.set_node_attributes(self.global_graph_object, community_map, 'community')
+                print(f"   Found {len(communities)} communities")
+                
+                # COMMUNITY-AWARE LAYOUT REFINEMENT
+                print("🎨 Refining layout with community separation...")
+                self.global_layout_positions = self._compute_community_aware_layout(
+                    self.global_graph_object, communities, self.global_layout_positions
+                )
+                nx.set_node_attributes(self.global_graph_object, self.global_layout_positions, 'pos')
+                
+            except:
+                # Fallback: assign all nodes to community 0
+                with tqdm(total=1, desc="🏘️ Fallback community assignment", unit="step") as pbar:
+                    community_map = {node: 0 for node in self.global_graph_object.nodes()}
+                    nx.set_node_attributes(self.global_graph_object, community_map, 'community')
+                    pbar.update(1)
+                print("   Using single community (fallback)")
+            
+            # Create legacy data structure for backward compatibility
+            cooccurrence_matrix = {}
+            for phrase1, phrase2, data in self.global_graph_object.edges(data=True):
+                pair_key = f"{sorted([phrase1, phrase2])[0]}|||{sorted([phrase1, phrase2])[1]}"
+                cooccurrence_matrix[pair_key] = data['weight']
+            
+            self.global_graph = {
+                'nodes': phrase_list,
+                'edges': cooccurrence_matrix,
+                'node_count': len(phrase_list),
+                'edge_count': len(cooccurrence_matrix),
+                'construction_params': self.reproducibility_config.copy(),
+                'construction_timestamp': datetime.now().isoformat(),
+                'structural_params': self.graph_construction_config.copy()
+            }
+            
+            print(f"✅ Global NetworkX graph construction completed!")
+            print(f"🌐 Graph nodes: {self.global_graph_object.number_of_nodes()}")
+            print(f"🌐 Graph edges: {self.global_graph_object.number_of_edges()}")
+            
+            if self.global_graph_object.number_of_nodes() > 1:
+                density = nx.density(self.global_graph_object)
+                print(f"🌐 Graph density: {density * 100:.2f}%")
+            
+            print(f"🎯 Layout positions computed and stored")
+            print(f"🏘️ Community structure detected and stored")
+            print(f"🎭 Node roles assigned (core/periphery)")
+            
+            self.pipeline_state['global_graph_built'] = True
+            
+        except Exception as e:
+            print(f"❌ Global graph construction failed: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def _compute_community_aware_layout(self, graph, communities, initial_positions):
+        """Compute community-aware layout with separation between communities"""
+        
+        # Calculate community centers
+        community_centers = {}
+        for i, community in enumerate(communities):
+            if len(community) > 0:
+                # Get average position of nodes in this community
+                x_coords = [initial_positions[node][0] for node in community if node in initial_positions]
+                y_coords = [initial_positions[node][1] for node in community if node in initial_positions]
+                
+                if x_coords and y_coords:
+                    center_x = np.mean(x_coords)
+                    center_y = np.mean(y_coords)
+                    community_centers[i] = (center_x, center_y)
+        
+        # Separate community centers
+        separation_factor = self.graph_construction_config['community_layout_separation']
+        
+        if len(community_centers) > 1:
+            # Arrange community centers in a circle for better separation
+            n_communities = len(community_centers)
+            angle_step = 2 * np.pi / n_communities
+            
+            new_centers = {}
+            for i, comm_id in enumerate(community_centers.keys()):
+                angle = i * angle_step
+                new_x = separation_factor * np.cos(angle)
+                new_y = separation_factor * np.sin(angle)
+                new_centers[comm_id] = (new_x, new_y)
+            
+            # Adjust node positions based on new community centers
+            refined_positions = {}
+            for i, community in enumerate(communities):
+                if i in new_centers and i in community_centers:
+                    old_center = community_centers[i]
+                    new_center = new_centers[i]
+                    
+                    # Translate nodes in this community
+                    offset_x = new_center[0] - old_center[0]
+                    offset_y = new_center[1] - old_center[1]
+                    
+                    for node in community:
+                        if node in initial_positions:
+                            old_pos = initial_positions[node]
+                            refined_positions[node] = (
+                                old_pos[0] + offset_x,
+                                old_pos[1] + offset_y
+                            )
+            
+            # Fill in any missing nodes
+            for node in graph.nodes():
+                if node not in refined_positions:
+                    refined_positions[node] = initial_positions.get(node, (0, 0))
+            
+            return refined_positions
+        
+        return initial_positions
+    
+    def view_global_graph_statistics(self):
+        """View global graph statistics computed directly from NetworkX graph object"""
+        if not self.validate_pipeline_step('global_graph_built', "Please build global graph first (step 4.1)"):
+            return
+        
+        print("\n📊 GLOBAL GRAPH STATISTICS")
+        print("-" * 50)
+        
+        if self.global_graph_object is None:
+            print("⚠️ No global graph object available")
+            return
+        
+        G = self.global_graph_object
+        
+        print(f"🌐 GLOBAL GRAPH STRUCTURE (NetworkX object):")
+        print(f"   Nodes (phrases): {G.number_of_nodes()}")
+        print(f"   Edges (co-occurrences): {G.number_of_edges()}")
+        
+        # Show filtering impact
+        if hasattr(self, 'raw_cooccurrence_counts'):
+            raw_edge_count = len(self.raw_cooccurrence_counts)
+            filtered_edge_count = G.number_of_edges()
+            reduction_pct = (1 - filtered_edge_count/raw_edge_count) * 100 if raw_edge_count > 0 else 0
+            print(f"   Raw edges (before filtering): {raw_edge_count}")
+            print(f"   Filtered edges: {filtered_edge_count}")
+            print(f"   Edge reduction: {reduction_pct:.1f}%")
+        
+        if G.number_of_nodes() > 1:
+            density = nx.density(G)
+            print(f"   Graph density: {density * 100:.2f}%")
+        
+        # Connected components analysis
+        if G.number_of_nodes() > 0:
+            components = list(nx.connected_components(G))
+            print(f"   Connected components: {len(components)}")
+            if len(components) > 1:
+                largest_cc = max(components, key=len)
+                print(f"   Largest component size: {len(largest_cc)} nodes")
+            
+            # Isolated nodes count
+            isolated_nodes = list(nx.isolates(G))
+            print(f"   Isolated nodes: {len(isolated_nodes)}")
+        
+        # Community structure
+        communities = set(nx.get_node_attributes(G, 'community').values())
+        if communities:
+            print(f"\n🏘️ COMMUNITY STRUCTURE:")
+            print(f"   Number of communities: {len(communities)}")
+            
+            # Community size distribution
+            community_sizes = defaultdict(int)
+            for node, community in nx.get_node_attributes(G, 'community').items():
+                community_sizes[community] += 1
+            
+            print(f"   Community sizes: {dict(community_sizes)}")
+        
+        # Node roles analysis
+        node_roles = nx.get_node_attributes(G, 'role')
+        if node_roles:
+            role_counts = defaultdict(int)
+            for role in node_roles.values():
+                role_counts[role] += 1
+            
+            print(f"\n🎭 NODE ROLES:")
+            for role, count in role_counts.items():
+                pct = count / len(node_roles) * 100
+                print(f"   {role.title()} nodes: {count} ({pct:.1f}%)")
+        
+        # Edge weight distribution
+        if G.number_of_edges() > 0:
+            edge_weights = [data['weight'] for _, _, data in G.edges(data=True)]
+            print(f"\n⚖️ EDGE WEIGHT DISTRIBUTION:")
+            print(f"   Min weight: {min(edge_weights)}")
+            print(f"   Max weight: {max(edge_weights)}")
+            print(f"   Average weight: {sum(edge_weights) / len(edge_weights):.2f}")
+            print(f"   Median weight: {np.median(edge_weights):.2f}")
+        
+        # Top important nodes by different measures
+        importance_scores = nx.get_node_attributes(G, 'importance')
+        if importance_scores:
+            top_important_nodes = sorted(importance_scores.items(), key=lambda x: x[1], reverse=True)[:5]
+            print(f"\n📊 TOP 5 IMPORTANT NODES (combined score):")
+            for i, (node, importance) in enumerate(top_important_nodes, 1):
+                role = node_roles.get(node, 'unknown')
+                print(f"   {i}. {node} (importance: {importance:.3f}, role: {role})")
+        
+        # Top co-occurring pairs (from NetworkX edges)
+        if G.number_of_edges() > 0:
+            sorted_edges = sorted(G.edges(data=True), key=lambda x: x[2]['weight'], reverse=True)
+            print(f"\n🔗 TOP 10 CO-OCCURRING PHRASE PAIRS:")
+            for i, (phrase1, phrase2, data) in enumerate(sorted_edges[:10], 1):
+                print(f"   {i:2d}. {phrase1} ↔ {phrase2} (weight: {data['weight']})")
+        
+        # Layout information
+        if self.global_layout_positions:
+            print(f"\n🎯 LAYOUT INFORMATION:")
+            print(f"   2D positions computed: {len(self.global_layout_positions)} nodes")
+            print(f"   Layout algorithm: {self.reproducibility_config['layout_algorithm']}")
+            print(f"   Random seed: {self.reproducibility_config['random_seed']}")
+            print(f"   Positions stored as node attributes: ✅")
+            print(f"   Community-aware layout: ✅")
+    
+    def export_global_graph_data(self):
+        """Export global graph data from NetworkX object (secondary to graph object)"""
+        if not self.validate_pipeline_step('global_graph_built', "Please build global graph first (step 4.1)"):
+            return
+        
+        print("\n💾 EXPORT GLOBAL GRAPH DATA")
+        print("-" * 50)
+        print("📋 Exporting from NetworkX graph object (graph object remains primary)")
+        
+        try:
+            # Create global graph directory
+            graph_dir = os.path.join(self.output_dir, "global_graph")
+            os.makedirs(graph_dir, exist_ok=True)
+            
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            if self.global_graph_object is None:
+                print("⚠️ No NetworkX graph object available")
+                return
+            
+            G = self.global_graph_object
+            
+            # Export NetworkX graph in multiple formats
+            base_name = f"global_graph_{timestamp}"
+            
+            # 1. Export as GraphML (preserves all attributes) - Convert numpy arrays to lists
+            graphml_file = os.path.join(graph_dir, f"{base_name}.graphml")
+            
+            # Create a copy of the graph with numpy arrays converted to separate x,y attributes for GraphML compatibility
+            G_copy = G.copy()
+            for node in G_copy.nodes():
+                if 'pos' in G_copy.nodes[node]:
+                    pos = G_copy.nodes[node]['pos']
+                    if isinstance(pos, np.ndarray):
+                        G_copy.nodes[node]['pos_x'] = float(pos[0])
+                        G_copy.nodes[node]['pos_y'] = float(pos[1])
+                        del G_copy.nodes[node]['pos']  # Remove the array/list attribute
+                    elif isinstance(pos, (list, tuple)) and len(pos) == 2:
+                        G_copy.nodes[node]['pos_x'] = float(pos[0])
+                        G_copy.nodes[node]['pos_y'] = float(pos[1])
+                        del G_copy.nodes[node]['pos']  # Remove the array/list attribute
+            
+            nx.write_graphml(G_copy, graphml_file)
+            print(f"✅ GraphML exported: {graphml_file}")
+            
+            # 2. Export as JSON with full structure
+            json_data = {
+                'metadata': {
+                    'timestamp': datetime.now().isoformat(),
+                    'nodes': G.number_of_nodes(),
+                    'edges': G.number_of_edges(),
+                    'density': nx.density(G) if G.number_of_nodes() > 1 else 0,
+                    'construction_params': self.reproducibility_config.copy()
+                },
+                'nodes': [
+                    {
+                        'id': node,
+                        'frequency': G.nodes[node].get('frequency', 0),
+                        'phrase_type': G.nodes[node].get('phrase_type', 'unknown'),
+                        'community': G.nodes[node].get('community', 0),
+                        'degree_centrality': G.nodes[node].get('degree_centrality', 0),
+                        'betweenness_centrality': G.nodes[node].get('betweenness_centrality', 0),
+                        'position': G.nodes[node].get('pos', [0, 0]).tolist() if isinstance(G.nodes[node].get('pos', [0, 0]), np.ndarray) else list(G.nodes[node].get('pos', [0, 0]))
+                    }
+                    for node in G.nodes()
+                ],
+                'edges': [
+                    {
+                        'source': u,
+                        'target': v,
+                        'weight': data['weight']
+                    }
+                    for u, v, data in G.edges(data=True)
+                ]
+            }
+            
+            json_file = os.path.join(graph_dir, f"{base_name}.json")
+            with open(json_file, 'w', encoding='utf-8') as f:
+                json.dump(json_data, f, indent=2, ensure_ascii=False)
+            print(f"✅ JSON exported: {json_file}")
+            
+            # 3. Export edge list for external tools
+            edge_list_file = os.path.join(graph_dir, f"{base_name}_edges.csv")
+            with open(edge_list_file, 'w', encoding='utf-8') as f:
+                f.write("source,target,weight\n")
+                for u, v, data in G.edges(data=True):
+                    f.write(f'"{u}","{v}",{data["weight"]}\n')
+            print(f"✅ Edge list exported: {edge_list_file}")
+            
+            # 4. Export node attributes
+            node_attrs_file = os.path.join(graph_dir, f"{base_name}_nodes.csv")
+            with open(node_attrs_file, 'w', encoding='utf-8') as f:
+                f.write("node,frequency,phrase_type,community,degree_centrality,betweenness_centrality,pos_x,pos_y\n")
+                for node in G.nodes():
+                    attrs = G.nodes[node]
+                    pos = attrs.get('pos', [0, 0])
+                    f.write(f'"{node}",{attrs.get("frequency", 0)},"{attrs.get("phrase_type", "unknown")}",'
+                           f'{attrs.get("community", 0)},{attrs.get("degree_centrality", 0)},'
+                           f'{attrs.get("betweenness_centrality", 0)},{pos[0]},{pos[1]}\n')
+            print(f"✅ Node attributes exported: {node_attrs_file}")
+            
+            print("📋 All exports are secondary representations of the primary NetworkX graph object")
+            
+        except Exception as e:
+            print(f"❌ Export failed: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def activate_state_subgraphs(self):
+        """Activate state-based subgraphs as NetworkX subgraph views (NOT rebuilds)"""
+        if not self.validate_pipeline_step('global_graph_built', "Please build global graph first (step 4.1)"):
+            return
+        
+        print("\n🗺️ STATE-BASED SUBGRAPH ACTIVATION")
+        print("-" * 60)
+        print("🔬 Creating NetworkX subgraph views from global graph (NOT rebuilding)")
+        print("🌐 Subgraphs share the same node space and positions as the global graph")
+        
+        try:
+            print("⏳ Activating state-based NetworkX subgraphs...")
+            
+            # Group documents by state
+            state_documents = {}
+            for doc in self.cleaned_text_data:
+                state = doc['state']
+                if state not in state_documents:
+                    state_documents[state] = []
+                state_documents[state].append(doc)
+            
+            self.state_subgraph_objects = {}
+            
+            # For each state, create a subgraph view from the global NetworkX graph
+            for state, docs in tqdm(state_documents.items(), desc="🗺️ Activating subgraphs", unit="state"):
+                print(f"   🗺️ Processing state: {state} ({len(docs)} documents)")
+                
+                # Get phrases that appear in this state's documents
+                state_phrases = set()
+                for doc in docs:
+                    tokens = doc['tokens']
+                    
+                    # Add phrases from this state's documents
+                    if self.reproducibility_config['phrase_type'] in ['word', 'mixed']:
+                        state_phrases.update([token for token in tokens if token in self.phrase_data['filtered_phrases']])
+                    
+                    if self.reproducibility_config['phrase_type'] in ['bigram', 'mixed']:
+                        for i in range(len(tokens) - 1):
+                            bigram = f"{tokens[i]} {tokens[i+1]}"
+                            if bigram in self.phrase_data['filtered_phrases']:
+                                state_phrases.add(bigram)
+                
+                # Create NetworkX subgraph view (shares nodes and positions with global graph)
+                state_nodes = [node for node in self.global_graph_object.nodes() if node in state_phrases]
+                
+                if state_nodes:
+                    # Create induced subgraph (preserves all edges between state nodes)
+                    state_subgraph = self.global_graph_object.subgraph(state_nodes)
+                    
+                    # Store as NetworkX subgraph object
+                    self.state_subgraph_objects[state] = state_subgraph
+                    
+                    print(f"      ✅ {state}: {state_subgraph.number_of_nodes()} nodes, {state_subgraph.number_of_edges()} edges")
+                    
+                    # Create legacy data structure for backward compatibility
+                    state_edges = {}
+                    for phrase1, phrase2, data in state_subgraph.edges(data=True):
+                        pair_key = f"{sorted([phrase1, phrase2])[0]}|||{sorted([phrase1, phrase2])[1]}"
+                        state_edges[pair_key] = data['weight']
+                    
+                    self.state_subgraphs[state] = {
+                        'state': state,
+                        'nodes': list(state_nodes),
+                        'edges': state_edges,
+                        'node_count': state_subgraph.number_of_nodes(),
+                        'edge_count': state_subgraph.number_of_edges(),
+                        'document_count': len(docs),
+                        'activation_timestamp': datetime.now().isoformat(),
+                        'source_global_graph': True
+                    }
+                else:
+                    print(f"      ⚠️ {state}: No valid phrases found")
+            
+            print(f"\n✅ State subgraph activation completed!")
+            print(f"🗺️ Activated {len(self.state_subgraph_objects)} NetworkX state subgraphs")
+            print(f"🎯 All subgraphs share positions from global layout")
+            
+            self.pipeline_state['subgraphs_activated'] = True
+            
+        except Exception as e:
+            print(f"❌ Subgraph activation failed: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def view_subgraph_comparisons(self):
+        """View subgraph comparison statistics computed from NetworkX objects"""
+        if not self.validate_pipeline_step('subgraphs_activated', "Please activate subgraphs first (step 5.1)"):
+            return
+        
+        print("\n📊 SUBGRAPH COMPARISON ANALYSIS")
+        print("-" * 60)
+        
+        if not hasattr(self, 'state_subgraph_objects') or not self.state_subgraph_objects:
+            print("⚠️ No state subgraph objects available")
+            return
+        
+        print(f"🗺️ SUBGRAPH OVERVIEW (NetworkX objects):")
+        print(f"   Total states: {len(self.state_subgraph_objects)}")
+        print(f"   Source: Global graph subviews (shared node space and positions)")
+        
+        # Comparison table with enhanced metrics
+        print(f"\n📋 STATE COMPARISON TABLE:")
+        print(f"{'State':<12} {'Docs':<6} {'Nodes':<8} {'Edges':<8} {'Density':<10} {'Communities':<12} {'Core Nodes':<12}")
+        print("-" * 85)
+        
+        for state, subgraph in self.state_subgraph_objects.items():
+            doc_count = len([doc for doc in self.cleaned_text_data if doc['state'] == state])
+            node_count = subgraph.number_of_nodes()
+            edge_count = subgraph.number_of_edges()
+            
+            if node_count > 1:
+                density = nx.density(subgraph) * 100
+                components = nx.number_connected_components(subgraph)
+            else:
+                density = 0
+                components = 1 if node_count == 1 else 0
+            
+            # Count communities represented in this subgraph
+            communities_in_subgraph = set()
+            core_nodes_count = 0
+            for node in subgraph.nodes():
+                if node in self.global_graph_object.nodes:
+                    community = self.global_graph_object.nodes[node].get('community', 0)
+                    communities_in_subgraph.add(community)
+                    
+                    role = self.global_graph_object.nodes[node].get('role', 'periphery')
+                    if role == 'core':
+                        core_nodes_count += 1
+            
+            print(f"{state:<12} {doc_count:<6} {node_count:<8} {edge_count:<8} {density:<10.2f}% {len(communities_in_subgraph):<12} {core_nodes_count:<12}")
+        
+        # Node overlap analysis (using NetworkX node sets)
+        state_names = list(self.state_subgraph_objects.keys())
+        if len(state_names) > 1:
+            print(f"\n🔗 NODE OVERLAP ANALYSIS:")
+            for i, state1 in enumerate(state_names):
+                for state2 in state_names[i+1:]:
+                    nodes1 = set(self.state_subgraph_objects[state1].nodes())
+                    nodes2 = set(self.state_subgraph_objects[state2].nodes())
+                    overlap = len(nodes1 & nodes2)
+                    total = len(nodes1 | nodes2)
+                    overlap_pct = overlap / total * 100 if total > 0 else 0
+                    print(f"   {state1} ↔ {state2}: {overlap}/{total} nodes ({overlap_pct:.1f}% overlap)")
+        
+        # Community structure comparison
+        print(f"\n🏘️ COMMUNITY STRUCTURE COMPARISON:")
+        for state, subgraph in self.state_subgraph_objects.items():
+            communities = set()
+            community_node_counts = defaultdict(int)
+            
+            for node in subgraph.nodes():
+                community = self.global_graph_object.nodes[node].get('community', 0)
+                communities.add(community)
+                community_node_counts[community] += 1
+            
+            community_info = ", ".join([f"C{comm}({count})" for comm, count in sorted(community_node_counts.items())])
+            print(f"   {state}: {len(communities)} communities - {community_info}")
+        
+        # Core vs periphery analysis
+        print(f"\n🎭 CORE VS PERIPHERY ANALYSIS:")
+        for state, subgraph in self.state_subgraph_objects.items():
+            core_count = 0
+            periphery_count = 0
+            
+            for node in subgraph.nodes():
+                role = self.global_graph_object.nodes[node].get('role', 'periphery')
+                if role == 'core':
+                    core_count += 1
+                else:
+                    periphery_count += 1
+            
+            total_nodes = core_count + periphery_count
+            core_pct = core_count / total_nodes * 100 if total_nodes > 0 else 0
+            print(f"   {state}: {core_count} core ({core_pct:.1f}%), {periphery_count} periphery")
+        
+        # Top important nodes per state
+        print(f"\n📊 TOP IMPORTANT NODES PER STATE:")
+        for state, subgraph in self.state_subgraph_objects.items():
+            if subgraph.number_of_nodes() > 0:
+                # Get importance scores for nodes in this subgraph
+                node_importance = {}
+                for node in subgraph.nodes():
+                    importance = self.global_graph_object.nodes[node].get('importance', 0)
+                    node_importance[node] = importance
+                
+                if node_importance:
+                    top_node = max(node_importance.items(), key=lambda x: x[1])
+                    role = self.global_graph_object.nodes[top_node[0]].get('role', 'unknown')
+                    print(f"   {state}: '{top_node[0]}' (importance: {top_node[1]:.3f}, role: {role})")
+    
+    def export_subgraph_data(self):
+        """Export subgraph data from NetworkX objects (secondary to graph objects)"""
+        if not self.validate_pipeline_step('subgraphs_activated', "Please activate subgraphs first (step 5.1)"):
+            return
+        
+        print("\n💾 EXPORT SUBGRAPH DATA")
+        print("-" * 50)
+        print("📋 Exporting from NetworkX subgraph objects (graph objects remain primary)")
+        
+        try:
+            # Create subgraphs directory
+            subgraph_dir = os.path.join(self.output_dir, "subgraphs")
+            os.makedirs(subgraph_dir, exist_ok=True)
+            
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            # Export each subgraph from NetworkX objects
+            subgraph_items = list(self.state_subgraph_objects.items())
+            
+            for state, subgraph in tqdm(subgraph_items, desc="💾 Exporting subgraphs", unit="subgraph"):
+                print(f"   📊 Exporting {state} subgraph...")
+                
+                # Progress for individual subgraph export steps
+                with tqdm(total=4, desc=f"💾 {state} export steps", unit="step", leave=False) as step_pbar:
+                    
+                    # Step 1: Prepare GraphML export
+                    step_pbar.set_description(f"💾 {state}: Preparing GraphML")
+                    graphml_file = os.path.join(subgraph_dir, f"subgraph_{state}_{timestamp}.graphml")
+                    
+                    # Create a copy of the subgraph with numpy arrays converted to separate x,y attributes
+                    subgraph_copy = subgraph.copy()
+                    for node in subgraph_copy.nodes():
+                        # Get position from global graph and convert if needed
+                        if node in self.global_graph_object.nodes:
+                            pos = self.global_graph_object.nodes[node].get('pos')
+                            if pos is not None:
+                                if isinstance(pos, np.ndarray):
+                                    subgraph_copy.nodes[node]['pos_x'] = float(pos[0])
+                                    subgraph_copy.nodes[node]['pos_y'] = float(pos[1])
+                                    if 'pos' in subgraph_copy.nodes[node]:
+                                        del subgraph_copy.nodes[node]['pos']  # Remove the array/list attribute
+                                elif isinstance(pos, (list, tuple)) and len(pos) == 2:
+                                    subgraph_copy.nodes[node]['pos_x'] = float(pos[0])
+                                    subgraph_copy.nodes[node]['pos_y'] = float(pos[1])
+                                    if 'pos' in subgraph_copy.nodes[node]:
+                                        del subgraph_copy.nodes[node]['pos']  # Remove the array/list attribute
+                    step_pbar.update(1)
+                    
+                    # Step 2: Write GraphML file
+                    step_pbar.set_description(f"💾 {state}: Writing GraphML")
+                    nx.write_graphml(subgraph_copy, graphml_file)
+                    step_pbar.update(1)
+                    
+                    # Step 3: Prepare JSON export
+                    step_pbar.set_description(f"💾 {state}: Preparing JSON")
+                    json_data = {
+                        'metadata': {
+                            'state': state,
+                            'timestamp': datetime.now().isoformat(),
+                            'nodes': subgraph.number_of_nodes(),
+                            'edges': subgraph.number_of_edges(),
+                            'density': nx.density(subgraph) if subgraph.number_of_nodes() > 1 else 0,
+                            'document_count': len([doc for doc in self.cleaned_text_data if doc['state'] == state]),
+                            'source_global_graph': True
+                        },
+                        'nodes': [
+                            {
+                                'id': node,
+                                'frequency': self.global_graph_object.nodes[node].get('frequency', 0),
+                                'phrase_type': self.global_graph_object.nodes[node].get('phrase_type', 'unknown'),
+                                'community': self.global_graph_object.nodes[node].get('community', 0),
+                                'degree_centrality': self.global_graph_object.nodes[node].get('degree_centrality', 0),
+                                'position': self.global_graph_object.nodes[node].get('pos', [0, 0]).tolist() if isinstance(self.global_graph_object.nodes[node].get('pos', [0, 0]), np.ndarray) else list(self.global_graph_object.nodes[node].get('pos', [0, 0]))
+                            }
+                            for node in subgraph.nodes()
+                        ],
+                        'edges': [
+                            {
+                                'source': u,
+                                'target': v,
+                                'weight': data['weight']
+                            }
+                            for u, v, data in subgraph.edges(data=True)
+                        ]
+                    }
+                    step_pbar.update(1)
+                    
+                    # Step 4: Write JSON file
+                    step_pbar.set_description(f"💾 {state}: Writing JSON")
+                    json_file = os.path.join(subgraph_dir, f"subgraph_{state}_{timestamp}.json")
+                    with open(json_file, 'w', encoding='utf-8') as f:
+                        json.dump(json_data, f, indent=2, ensure_ascii=False)
+                    step_pbar.update(1)
+                
+                print(f"      ✅ GraphML: subgraph_{state}_{timestamp}.graphml")
+                print(f"      ✅ JSON: subgraph_{state}_{timestamp}.json")
+            
+            # Export combined summary
+            summary_data = {
+                'export_timestamp': datetime.now().isoformat(),
+                'total_states': len(self.state_subgraph_objects),
+                'subgraphs': {
+                    state: {
+                        'nodes': subgraph.number_of_nodes(),
+                        'edges': subgraph.number_of_edges(),
+                        'density': nx.density(subgraph) if subgraph.number_of_nodes() > 1 else 0
+                    }
+                    for state, subgraph in self.state_subgraph_objects.items()
+                }
+            }
+            
+            summary_file = os.path.join(subgraph_dir, f"subgraph_summary_{timestamp}.json")
+            with open(summary_file, 'w', encoding='utf-8') as f:
+                json.dump(summary_data, f, indent=2, ensure_ascii=False)
+            
+            print(f"✅ Summary exported: subgraph_summary_{timestamp}.json")
+            print("📋 All exports are secondary representations of the primary NetworkX subgraph objects")
+            
+        except Exception as e:
+            print(f"❌ Export failed: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def generate_deterministic_visualizations(self):
+        """Generate deterministic visualizations directly from NetworkX graph objects"""
+        if not self.validate_pipeline_step('subgraphs_activated', "Please activate subgraphs first (step 5.1)"):
+            return
+        
+        print("\n🎨 DETERMINISTIC VISUALIZATION GENERATION")
+        print("-" * 60)
+        print("🔬 Generating readable thematic network visualizations")
+        print(f"🌱 Random seed: {self.reproducibility_config['random_seed']}")
+        print(f"🎯 Layout algorithm: {self.reproducibility_config['layout_algorithm']}")
+        
+        # Visualization configuration for readable networks
+        self.viz_config = {
+            'edge_alpha': 0.15,  # Very low alpha for edges
+            'intra_community_edge_alpha': 0.3,  # Slightly higher for intra-community
+            'inter_community_edge_alpha': 0.05,  # Very low for inter-community
+            'core_node_shape': '^',  # Triangle for core nodes
+            'periphery_node_shape': 'o',  # Circle for periphery nodes
+            'min_node_size': 100,
+            'max_node_size': 1000,
+            'label_importance_threshold': 0.7,  # Only label top 30% important nodes
+            'max_labels_per_community': 3,  # Max labels per community
+        }
+        
+        try:
+            # Create visualizations directory
+            viz_dir = os.path.join(self.output_dir, "visualizations")
+            os.makedirs(viz_dir, exist_ok=True)
+            
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            seed = self.reproducibility_config['random_seed']
+            
+            self.visualization_paths = {}
+            
+            print("⏳ Generating readable thematic network visualizations...")
+            
+            # Set matplotlib parameters for consistent output
+            plt.rcParams['figure.dpi'] = 150
+            plt.rcParams['savefig.dpi'] = 150
+            plt.rcParams['font.size'] = 10
+            
+            # 1. GLOBAL GRAPH VISUALIZATION - READABLE THEMATIC NETWORK
+            if self.global_graph_object and self.global_layout_positions:
+                with tqdm(total=8, desc="🌐 Global thematic network", unit="step") as pbar:
+                    pbar.set_description("🌐 Setting up figure")
+                    fig, ax = plt.subplots(1, 1, figsize=(16, 12))
+                    G = self.global_graph_object
+                    pos = self.global_layout_positions
+                    pbar.update(1)
+                    
+                    pbar.set_description("🌐 Preparing node attributes")
+                    # Get node attributes
+                    communities = nx.get_node_attributes(G, 'community')
+                    importance_scores = nx.get_node_attributes(G, 'importance')
+                    node_roles = nx.get_node_attributes(G, 'role')
+                    
+                    # Create distinct color map for communities
+                    unique_communities = sorted(set(communities.values())) if communities else [0]
+                    colors = plt.cm.tab10(np.linspace(0, 1, len(unique_communities)))
+                    community_colors = {comm: colors[i % len(colors)] for i, comm in enumerate(unique_communities)}
+                    pbar.update(1)
+                    
+                    pbar.set_description("🌐 Computing visual attributes")
+                    # Node visual attributes
+                    node_colors = [community_colors.get(communities.get(node, 0), 'lightblue') for node in G.nodes()]
+                    
+                    # Node sizes based on importance
+                    node_sizes = []
+                    node_shapes_core = []
+                    node_shapes_periphery = []
+                    
+                    for node in G.nodes():
+                        importance = importance_scores.get(node, 0)
+                        size = self.viz_config['min_node_size'] + (self.viz_config['max_node_size'] - self.viz_config['min_node_size']) * importance
+                        node_sizes.append(size)
+                        
+                        role = node_roles.get(node, 'periphery')
+                        if role == 'core':
+                            node_shapes_core.append(node)
+                        else:
+                            node_shapes_periphery.append(node)
+                    
+                    pbar.update(1)
+                    
+                    pbar.set_description("🌐 Drawing edges with filtering")
+                    # 🔧 修复边绘制性能问题 - 预计算max_weight避免重复计算
+                    edges_to_draw = []
+                    edge_colors = []
+                    edge_widths = []
+                    edge_alphas = []
+                    
+                    # 预先计算max_weight，避免在循环中重复计算（性能杀手！）
+                    edge_weights = [data['weight'] for _, _, data in G.edges(data=True)]
+                    max_weight = max(edge_weights) if edge_weights else 1
+                    
+                    for u, v, data in G.edges(data=True):
+                        weight = data['weight']
+                        u_community = communities.get(u, 0)
+                        v_community = communities.get(v, 0)
+                        
+                        # Determine edge properties
+                        if u_community == v_community:
+                            alpha = self.viz_config['intra_community_edge_alpha']
+                            color = community_colors.get(u_community, 'gray')
+                        else:
+                            alpha = self.viz_config['inter_community_edge_alpha']
+                            color = 'gray'
+                        
+                        # Edge width based on pre-calculated max_weight
+                        width = 0.5 + 2.0 * (weight / max_weight)
+                        
+                        edges_to_draw.append((u, v))
+                        edge_colors.append(color)
+                        edge_widths.append(width)
+                        edge_alphas.append(alpha)
+                    
+                    # 批量绘制边避免卡住 - 限制边数并简化绘制
+                    if edges_to_draw:
+                        # 只绘制重要的边，避免视觉混乱
+                        important_edges = []
+                        for i, (u, v) in enumerate(edges_to_draw):
+                            if edge_widths[i] >= 1.0:  # 只绘制权重较高的边
+                                important_edges.append((u, v))
+                        
+                        # 限制边数避免卡住
+                        limited_edges = important_edges[:100] if len(important_edges) > 100 else important_edges
+                        
+                        if limited_edges:
+                            nx.draw_networkx_edges(G, pos, edgelist=limited_edges,
+                                                 width=1.0, alpha=0.3, edge_color='gray', ax=ax)
+                    pbar.update(1)
+                    
+                    pbar.set_description("🌐 Drawing nodes by role")
+                    # Draw nodes by role with different shapes
+                    if node_shapes_core:
+                        core_colors = [community_colors.get(communities.get(node, 0), 'lightblue') for node in node_shapes_core]
+                        core_sizes = [node_sizes[list(G.nodes()).index(node)] for node in node_shapes_core]
+                        nx.draw_networkx_nodes(G, pos, nodelist=node_shapes_core,
+                                             node_color=core_colors, node_size=core_sizes,
+                                             node_shape=self.viz_config['core_node_shape'],
+                                             alpha=0.9, edgecolors='black', linewidths=1.5, ax=ax)
+                    
+                    if node_shapes_periphery:
+                        periphery_colors = [community_colors.get(communities.get(node, 0), 'lightblue') for node in node_shapes_periphery]
+                        periphery_sizes = [node_sizes[list(G.nodes()).index(node)] for node in node_shapes_periphery]
+                        nx.draw_networkx_nodes(G, pos, nodelist=node_shapes_periphery,
+                                             node_color=periphery_colors, node_size=periphery_sizes,
+                                             node_shape=self.viz_config['periphery_node_shape'],
+                                             alpha=0.8, edgecolors='gray', linewidths=0.5, ax=ax)
+                    pbar.update(1)
+                    
+                    pbar.set_description("🌐 Adding selective labels")
+                    # SELECTIVE LABELING - Only label important nodes
+                    labels_to_draw = {}
+                    importance_threshold = np.percentile(list(importance_scores.values()), 
+                                                       self.viz_config['label_importance_threshold'] * 100)
+                    
+                    # Group nodes by community for balanced labeling
+                    community_nodes = defaultdict(list)
+                    for node in G.nodes():
+                        community = communities.get(node, 0)
+                        importance = importance_scores.get(node, 0)
+                        if importance >= importance_threshold:
+                            community_nodes[community].append((node, importance))
+                    
+                    # Select top nodes per community
+                    for community, nodes in community_nodes.items():
+                        # Sort by importance and take top N
+                        top_nodes = sorted(nodes, key=lambda x: x[1], reverse=True)[:self.viz_config['max_labels_per_community']]
+                        for node, _ in top_nodes:
+                            labels_to_draw[node] = node
+                    
+                    if labels_to_draw:
+                        nx.draw_networkx_labels(G, pos, labels_to_draw, 
+                                              font_size=9, font_weight='bold', 
+                                              font_color='black', ax=ax)
+                    pbar.update(1)
+                    
+                    pbar.set_description("🌐 Adding legends and annotations")
+                    # Enhanced title and annotations
+                    ax.set_title(f'Global Thematic Co-occurrence Network\n'
+                               f'{G.number_of_nodes()} nodes, {G.number_of_edges()} edges, '
+                               f'{len(unique_communities)} communities\n'
+                               f'Seed: {seed} | Density: {nx.density(G)*100:.2f}%', 
+                               fontsize=14, fontweight='bold', pad=20)
+                    
+                    # Community legend
+                    legend_elements = []
+                    for comm in sorted(unique_communities):
+                        color = community_colors[comm]
+                        legend_elements.append(patches.Patch(color=color, label=f'Community {comm}'))
+                    
+                    # Role legend
+                    legend_elements.append(patches.Patch(color='white', label=''))  # Spacer
+                    legend_elements.append(plt.Line2D([0], [0], marker='^', color='w', 
+                                                    markerfacecolor='gray', markersize=10, label='Core nodes'))
+                    legend_elements.append(plt.Line2D([0], [0], marker='o', color='w', 
+                                                    markerfacecolor='gray', markersize=8, label='Periphery nodes'))
+                    
+                    ax.legend(handles=legend_elements, loc='upper left', bbox_to_anchor=(1.02, 1), 
+                            frameon=True, fancybox=True, shadow=True)
+                    
+                    ax.axis('off')
+                    plt.tight_layout()
+                    pbar.update(1)
+                    
+                    pbar.set_description("🌐 Saving visualization")
+                    global_viz_name = f"global_thematic_network_seed{seed}_{timestamp}.png"
+                    global_viz_path = os.path.join(viz_dir, global_viz_name)
+                    plt.savefig(global_viz_path, bbox_inches='tight', facecolor='white', dpi=300)
+                    plt.close()
+                    
+                    self.visualization_paths['global_graph'] = global_viz_path
+                    pbar.update(1)
+                
+                print(f"      ✅ Saved: {global_viz_name}")
+            
+            # 2. STATE SUBGRAPH VISUALIZATIONS - HIGHLIGHTED SUBSETS
+            subgraph_items = list(self.state_subgraph_objects.items())
+            
+            for state, subgraph in tqdm(subgraph_items, desc="🎨 Generating state thematic networks", unit="subgraph"):
+                if subgraph.number_of_nodes() > 0:
+                    with tqdm(total=8, desc=f"🎨 {state} thematic network", unit="step", leave=False) as step_pbar:
+                        step_pbar.set_description(f"🎨 {state}: Setting up figure")
+                        fig, ax = plt.subplots(1, 1, figsize=(14, 10))
+                        
+                        # Use same positions as global graph for consistency
+                        subgraph_pos = {node: self.global_layout_positions[node] for node in subgraph.nodes() 
+                                      if node in self.global_layout_positions}
+                        step_pbar.update(1)
+                        
+                        step_pbar.set_description(f"🎨 {state}: Preparing attributes")
+                        # Get node attributes from global graph (maintain consistency)
+                        communities = {node: self.global_graph_object.nodes[node].get('community', 0) 
+                                     for node in subgraph.nodes()}
+                        importance_scores = {node: self.global_graph_object.nodes[node].get('importance', 0) 
+                                           for node in subgraph.nodes()}
+                        node_roles = {node: self.global_graph_object.nodes[node].get('role', 'periphery') 
+                                    for node in subgraph.nodes()}
+                        
+                        # Use same color scheme as global graph
+                        unique_communities = sorted(set(communities.values()))
+                        colors = plt.cm.tab10(np.linspace(0, 1, len(unique_communities)))
+                        community_colors = {comm: colors[i % len(colors)] for i, comm in enumerate(unique_communities)}
+                        step_pbar.update(1)
+                        
+                        step_pbar.set_description(f"🎨 {state}: Computing visual attributes")
+                        # Node visual attributes (consistent with global)
+                        node_colors = [community_colors.get(communities.get(node, 0), 'lightblue') for node in subgraph.nodes()]
+                        
+                        node_sizes = []
+                        node_shapes_core = []
+                        node_shapes_periphery = []
+                        
+                        for node in subgraph.nodes():
+                            importance = importance_scores.get(node, 0)
+                            size = self.viz_config['min_node_size'] + (self.viz_config['max_node_size'] - self.viz_config['min_node_size']) * importance
+                            node_sizes.append(size)
+                            
+                            role = node_roles.get(node, 'periphery')
+                            if role == 'core':
+                                node_shapes_core.append(node)
+                            else:
+                                node_shapes_periphery.append(node)
+                        step_pbar.update(1)
+                        
+                        step_pbar.set_description(f"🎨 {state}: Drawing edges")
+                        # 简化边绘制避免卡住
+                        if subgraph.number_of_edges() > 0:
+                            # 限制边数并简化绘制
+                            edge_list = list(subgraph.edges(data=True))[:30]  # 最多30条边
+                            if edge_list:
+                                nx.draw_networkx_edges(subgraph, subgraph_pos, 
+                                                     edgelist=[(u, v) for u, v, _ in edge_list],
+                                                     width=1.0, alpha=0.3, edge_color='gray', ax=ax)
+                        step_pbar.update(1)
+                        
+                        step_pbar.set_description(f"🎨 {state}: Drawing nodes")
+                        # Draw nodes by role
+                        if node_shapes_core:
+                            core_colors = [community_colors.get(communities.get(node, 0), 'lightblue') for node in node_shapes_core]
+                            core_sizes = [node_sizes[list(subgraph.nodes()).index(node)] for node in node_shapes_core]
+                            nx.draw_networkx_nodes(subgraph, subgraph_pos, nodelist=node_shapes_core,
+                                                 node_color=core_colors, node_size=core_sizes,
+                                                 node_shape=self.viz_config['core_node_shape'],
+                                                 alpha=0.9, edgecolors='black', linewidths=1.5, ax=ax)
+                        
+                        if node_shapes_periphery:
+                            periphery_colors = [community_colors.get(communities.get(node, 0), 'lightblue') for node in node_shapes_periphery]
+                            periphery_sizes = [node_sizes[list(subgraph.nodes()).index(node)] for node in node_shapes_periphery]
+                            nx.draw_networkx_nodes(subgraph, subgraph_pos, nodelist=node_shapes_periphery,
+                                                 node_color=periphery_colors, node_size=periphery_sizes,
+                                                 node_shape=self.viz_config['periphery_node_shape'],
+                                                 alpha=0.8, edgecolors='gray', linewidths=0.5, ax=ax)
+                        step_pbar.update(1)
+                        
+                        step_pbar.set_description(f"🎨 {state}: Adding labels")
+                        # Selective labeling for subgraph
+                        labels_to_draw = {}
+                        if importance_scores:
+                            importance_threshold = np.percentile(list(importance_scores.values()), 70)
+                            
+                            community_nodes = defaultdict(list)
+                            for node in subgraph.nodes():
+                                community = communities.get(node, 0)
+                                importance = importance_scores.get(node, 0)
+                                if importance >= importance_threshold:
+                                    community_nodes[community].append((node, importance))
+                            
+                            for community, nodes in community_nodes.items():
+                                top_nodes = sorted(nodes, key=lambda x: x[1], reverse=True)[:2]  # Fewer labels for subgraphs
+                                for node, _ in top_nodes:
+                                    labels_to_draw[node] = node
+                        
+                        if labels_to_draw:
+                            nx.draw_networkx_labels(subgraph, subgraph_pos, labels_to_draw,
+                                                  font_size=9, font_weight='bold',
+                                                  font_color='black', ax=ax)
+                        step_pbar.update(1)
+                        
+                        step_pbar.set_description(f"🎨 {state}: Finalizing")
+                        doc_count = len([doc for doc in self.cleaned_text_data if doc['state'] == state])
+                        core_count = len(node_shapes_core)
+                        
+                        ax.set_title(f'State {state} Thematic Network\n'
+                                   f'{subgraph.number_of_nodes()} nodes, {subgraph.number_of_edges()} edges, '
+                                   f'{len(unique_communities)} communities\n'
+                                   f'{doc_count} documents, {core_count} core nodes | Seed: {seed}', 
+                                   fontsize=12, fontweight='bold', pad=15)
+                        
+                        # Add legend (simplified for subgraphs)
+                        legend_elements = []
+                        for comm in sorted(unique_communities):
+                            color = community_colors[comm]
+                            legend_elements.append(patches.Patch(color=color, label=f'Community {comm}'))
+                        
+                        if len(legend_elements) > 0:
+                            ax.legend(handles=legend_elements, loc='upper right', bbox_to_anchor=(1, 1))
+                        
+                        ax.axis('off')
+                        plt.tight_layout()
+                        
+                        state_viz_name = f"state_{state}_thematic_network_seed{seed}_{timestamp}.png"
+                        state_viz_path = os.path.join(viz_dir, state_viz_name)
+                        plt.savefig(state_viz_path, bbox_inches='tight', facecolor='white', dpi=300)
+                        plt.close()
+                        
+                        self.visualization_paths[f'subgraph_{state}'] = state_viz_path
+                        step_pbar.update(1)
+                    
+                    print(f"      ✅ Saved: {state_viz_name}")
+            
+            print(f"\n✅ Thematic network visualization generation completed!")
+            print(f"🎨 Generated {len(self.visualization_paths)} readable visualizations")
+            print(f"📁 Output directory: {viz_dir}")
+            print(f"🎯 All visualizations use consistent community-aware layout")
+            print(f"🔍 Edge filtering applied for readability")
+            print(f"🎭 Node roles visualized (core=triangles, periphery=circles)")
+            
+            self.pipeline_state['results_exported'] = True
+            
+        except Exception as e:
+            print(f"❌ Visualization generation failed: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def view_output_image_paths(self):
+        """View output image paths clearly"""
+        if not hasattr(self, 'visualization_paths') or not self.visualization_paths:
+            print("⚠️ No visualizations generated yet. Use step 6.1 first.")
+            return
+        
+        print("\n📁 OUTPUT IMAGE PATHS")
+        print("-" * 60)
+        print("🎨 All visualization files with complete paths:")
+        print()
+        
+        for viz_name, viz_path in self.visualization_paths.items():
+            abs_path = os.path.abspath(viz_path)
+            print(f"📊 {viz_name}:")
+            print(f"   Path: {abs_path}")
+            print(f"   Directory: {os.path.dirname(abs_path)}")
+            print(f"   Filename: {os.path.basename(abs_path)}")
+            print()
+        
+        print(f"📁 Base visualization directory: {os.path.abspath(os.path.join(self.output_dir, 'visualizations'))}")
+    
+    def export_complete_results(self):
+        """Export complete research results"""
+        print("\n📦 EXPORT COMPLETE RESEARCH RESULTS")
+        print("-" * 60)
+        
+        try:
+            # Create exports directory
+            export_dir = os.path.join(self.output_dir, "exports")
+            os.makedirs(export_dir, exist_ok=True)
+            
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            # Create comprehensive results package
+            results_package = {
+                'export_info': {
+                    'timestamp': datetime.now().isoformat(),
+                    'pipeline_version': '4.0.0',
+                    'export_type': 'complete_research_results'
+                },
+                'reproducibility_config': self.reproducibility_config.copy(),
+                'pipeline_state': self.pipeline_state.copy(),
+                'input_summary': {
+                    'input_directory': self.input_directory,
+                    'file_count': len(self.input_files),
+                    'document_count': len(self.cleaned_text_data) if hasattr(self, 'cleaned_text_data') else 0
+                },
+                'processing_results': {}
+            }
+            
+            # Add processing results if available
+            if hasattr(self, 'cleaned_text_data'):
+                results_package['processing_results']['text_cleaning'] = {
+                    'document_count': len(self.cleaned_text_data),
+                    'total_tokens': sum(doc['token_count'] for doc in self.cleaned_text_data)
+                }
+            
+            if hasattr(self, 'phrase_data'):
+                results_package['processing_results']['phrase_extraction'] = {
+                    'total_phrases': len(self.phrase_data['all_phrases']),
+                    'unique_phrases': len(self.phrase_data['phrase_counts']),
+                    'filtered_phrases': len(self.phrase_data['filtered_phrases'])
+                }
+            
+            if hasattr(self, 'global_graph_object') and self.global_graph_object:
+                results_package['processing_results']['global_graph'] = {
+                    'node_count': self.global_graph_object.number_of_nodes(),
+                    'edge_count': self.global_graph_object.number_of_edges(),
+                    'density': nx.density(self.global_graph_object) if self.global_graph_object.number_of_nodes() > 1 else 0,
+                    'connected_components': nx.number_connected_components(self.global_graph_object),
+                    'layout_computed': self.global_layout_positions is not None,
+                    'communities_detected': len(set(nx.get_node_attributes(self.global_graph_object, 'community').values())),
+                    'graph_object_type': 'NetworkX Graph'
+                }
+            
+            if hasattr(self, 'state_subgraph_objects') and self.state_subgraph_objects:
+                results_package['processing_results']['state_subgraphs'] = {
+                    state: {
+                        'node_count': subgraph.number_of_nodes(),
+                        'edge_count': subgraph.number_of_edges(),
+                        'density': nx.density(subgraph) if subgraph.number_of_nodes() > 1 else 0,
+                        'document_count': len([doc for doc in self.cleaned_text_data if doc['state'] == state]),
+                        'graph_object_type': 'NetworkX SubGraph View'
+                    }
+                    for state, subgraph in self.state_subgraph_objects.items()
+                }
+            
+            if hasattr(self, 'visualization_paths'):
+                results_package['processing_results']['visualizations'] = {
+                    'generated_count': len(self.visualization_paths),
+                    'output_paths': self.visualization_paths.copy()
+                }
+            
+            # Export results package
+            results_file = os.path.join(export_dir, f"complete_results_{timestamp}.json")
+            with open(results_file, 'w', encoding='utf-8') as f:
+                json.dump(results_package, f, indent=2, ensure_ascii=False)
+            
+            print(f"✅ Complete results exported: {results_file}")
+            print("📋 Package includes:")
+            print("   - Reproducibility configuration")
+            print("   - Pipeline state and processing statistics")
+            print("   - Input/output summaries")
+            print("   - Visualization paths")
+            print("🔬 This file provides complete traceability for research reproducibility")
+            
+        except Exception as e:
+            print(f"❌ Export failed: {e}")
+    
+    def view_graph_nodes_and_data(self):
+        """Export detailed graph node and data information to document"""
+        print("\n📊 EXPORT GRAPH NODES & DATA DETAILS")
+        print("-" * 60)
+        
+        # Check if visualizations have been generated
+        if not hasattr(self, 'visualization_paths') or not self.visualization_paths:
+            print("⚠️ No visualizations generated yet. Please run step 6.1 first.")
+            return
+        
+        if not hasattr(self, 'global_graph_object') or not self.global_graph_object:
+            print("⚠️ No global graph available. Please run step 4.1 first.")
+            return
+        
+        # Show available graphs for selection
+        print("📈 Available graphs for analysis:")
+        print("0. Global Graph (complete network)")
+        
+        available_subgraphs = []
+        if hasattr(self, 'state_subgraph_objects') and self.state_subgraph_objects:
+            for i, (state, subgraph) in enumerate(self.state_subgraph_objects.items(), 1):
+                print(f"{i}. State {state} Subgraph ({subgraph.number_of_nodes()} nodes, {subgraph.number_of_edges()} edges)")
+                available_subgraphs.append((state, subgraph))
+        
+        print("A. All graphs (global + 3 random subgraphs)")
+        print()
+        
+        # Get user selection
+        choice = self.get_user_choice("Select graph to analyze", 
+                                    ["0", "A"] + [str(i) for i in range(1, len(available_subgraphs) + 1)])
+        
+        # Create output directory
+        output_dir = os.path.join(self.output_dir, "graph_analysis")
+        os.makedirs(output_dir, exist_ok=True)
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        if choice == "0":
+            # Export global graph
+            self._export_single_graph_data(self.global_graph_object, "global", output_dir, timestamp)
+            
+        elif choice == "A":
+            # Export global graph + 3 random subgraphs
+            self._export_single_graph_data(self.global_graph_object, "global", output_dir, timestamp)
+            
+            # Select 3 random subgraphs
+            import random
+            selected_subgraphs = random.sample(available_subgraphs, min(3, len(available_subgraphs)))
+            
+            for state, subgraph in selected_subgraphs:
+                self._export_single_graph_data(subgraph, f"state_{state}", output_dir, timestamp)
+            
+            print(f"✅ Exported global graph + {len(selected_subgraphs)} random subgraphs")
+            
+        else:
+            # Export specific subgraph
+            idx = int(choice) - 1
+            if 0 <= idx < len(available_subgraphs):
+                state, subgraph = available_subgraphs[idx]
+                self._export_single_graph_data(subgraph, f"state_{state}", output_dir, timestamp)
+        
+        print(f"📁 All analysis files saved to: {os.path.abspath(output_dir)}")
+    
+    def _export_single_graph_data(self, graph, graph_name, output_dir, timestamp):
+        """Export detailed data for a single graph to document"""
+        
+        # Prepare filename
+        filename = f"graph_analysis_{graph_name}_{timestamp}.txt"
+        filepath = os.path.join(output_dir, filename)
+        
+        with open(filepath, 'w', encoding='utf-8') as f:
+            # Header
+            f.write(f"GRAPH ANALYSIS REPORT: {graph_name.upper()}\n")
+            f.write(f"Generated: {datetime.now().isoformat()}\n")
+            f.write(f"Random Seed: {self.reproducibility_config['random_seed']}\n")
+            f.write("=" * 80 + "\n\n")
+            
+            # Basic graph metrics
+            f.write("GRAPH STRUCTURE\n")
+            f.write("-" * 40 + "\n")
+            f.write(f"nodes: {graph.number_of_nodes()}\n")
+            f.write(f"edges: {graph.number_of_edges()}\n")
+            f.write(f"density: {nx.density(graph):.6f}\n")
+            f.write(f"connected_components: {nx.number_connected_components(graph)}\n")
+            f.write(f"isolated_nodes: {len(list(nx.isolates(graph)))}\n")
+            f.write("\n")
+            
+            # Node attributes and data
+            f.write("NODE DATA\n")
+            f.write("-" * 40 + "\n")
+            
+            # Get all node attributes
+            all_attributes = set()
+            for node in graph.nodes():
+                all_attributes.update(graph.nodes[node].keys())
+            
+            # Write header
+            f.write("node_id\t")
+            for attr in sorted(all_attributes):
+                f.write(f"{attr}\t")
+            f.write("\n")
+            
+            # Write node data
+            for node in sorted(graph.nodes()):
+                f.write(f"{node}\t")
+                for attr in sorted(all_attributes):
+                    value = graph.nodes[node].get(attr, "")
+                    # Handle different data types
+                    if isinstance(value, (list, tuple, np.ndarray)):
+                        if len(value) == 2:  # Position coordinates
+                            value = f"[{value[0]:.6f},{value[1]:.6f}]"
+                        else:
+                            value = str(value)
+                    elif isinstance(value, float):
+                        value = f"{value:.6f}"
+                    f.write(f"{value}\t")
+                f.write("\n")
+            f.write("\n")
+            
+            # Edge data
+            f.write("EDGE DATA\n")
+            f.write("-" * 40 + "\n")
+            
+            if graph.number_of_edges() > 0:
+                # Get all edge attributes
+                edge_attributes = set()
+                for u, v, data in graph.edges(data=True):
+                    edge_attributes.update(data.keys())
+                
+                # Write header
+                f.write("source\ttarget\t")
+                for attr in sorted(edge_attributes):
+                    f.write(f"{attr}\t")
+                f.write("\n")
+                
+                # Write edge data
+                for u, v, data in graph.edges(data=True):
+                    f.write(f"{u}\t{v}\t")
+                    for attr in sorted(edge_attributes):
+                        value = data.get(attr, "")
+                        if isinstance(value, float):
+                            value = f"{value:.6f}"
+                        f.write(f"{value}\t")
+                    f.write("\n")
+            else:
+                f.write("no_edges\n")
+            f.write("\n")
+            
+            # Processing parameters used
+            f.write("PROCESSING PARAMETERS\n")
+            f.write("-" * 40 + "\n")
+            for key, value in self.reproducibility_config.items():
+                f.write(f"{key}: {value}\n")
+            f.write("\n")
+            
+            # Graph construction parameters
+            if hasattr(self, 'graph_construction_config'):
+                f.write("GRAPH CONSTRUCTION PARAMETERS\n")
+                f.write("-" * 40 + "\n")
+                for key, value in self.graph_construction_config.items():
+                    f.write(f"{key}: {value}\n")
+                f.write("\n")
+            
+            # Source data statistics
+            if hasattr(self, 'cleaned_text_data') and self.cleaned_text_data:
+                f.write("SOURCE DATA STATISTICS\n")
+                f.write("-" * 40 + "\n")
+                
+                # Overall statistics
+                total_docs = len(self.cleaned_text_data)
+                total_tokens = sum(doc['token_count'] for doc in self.cleaned_text_data)
+                f.write(f"total_documents: {total_docs}\n")
+                f.write(f"total_tokens: {total_tokens}\n")
+                f.write(f"avg_tokens_per_doc: {total_tokens/total_docs:.2f}\n")
+                
+                # State-wise statistics
+                state_stats = defaultdict(lambda: {'docs': 0, 'tokens': 0})
+                for doc in self.cleaned_text_data:
+                    state = doc['state']
+                    state_stats[state]['docs'] += 1
+                    state_stats[state]['tokens'] += doc['token_count']
+                
+                f.write("\nstate_statistics:\n")
+                for state, stats in sorted(state_stats.items()):
+                    f.write(f"  {state}: docs={stats['docs']}, tokens={stats['tokens']}\n")
+                f.write("\n")
+            
+            # Phrase extraction data
+            if hasattr(self, 'phrase_data') and self.phrase_data:
+                f.write("PHRASE EXTRACTION DATA\n")
+                f.write("-" * 40 + "\n")
+                f.write(f"total_phrase_instances: {len(self.phrase_data['all_phrases'])}\n")
+                f.write(f"unique_phrases: {len(self.phrase_data['phrase_counts'])}\n")
+                f.write(f"filtered_phrases: {len(self.phrase_data['filtered_phrases'])}\n")
+                f.write(f"min_frequency_threshold: {self.reproducibility_config['min_phrase_frequency']}\n")
+                f.write(f"phrase_type: {self.reproducibility_config['phrase_type']}\n")
+                
+                # Phrase frequency distribution
+                f.write("\nphrase_frequencies:\n")
+                sorted_phrases = sorted(self.phrase_data['filtered_phrases'].items(), 
+                                      key=lambda x: x[1], reverse=True)
+                for phrase, freq in sorted_phrases:
+                    f.write(f"  {phrase}: {freq}\n")
+                f.write("\n")
+            
+            # Layout algorithm data
+            if hasattr(self, 'global_layout_positions') and self.global_layout_positions:
+                f.write("LAYOUT ALGORITHM DATA\n")
+                f.write("-" * 40 + "\n")
+                f.write(f"algorithm: spring_layout\n")
+                f.write(f"iterations: 50\n")
+                f.write(f"k_parameter: 1.0\n")
+                f.write(f"random_seed: {self.reproducibility_config['random_seed']}\n")
+                f.write(f"positions_computed: {len(self.global_layout_positions)}\n")
+                f.write("\n")
+        
+        print(f"✅ Exported {graph_name} analysis: {filename}")
+        return filepath
+    
+    def create_sample_research_data(self):
+        """Create sample research data directory"""
+        print("\n📊 CREATE SAMPLE RESEARCH DATA")
+        print("-" * 50)
+        
+        # Create sample directory
+        sample_dir = "sample_research_data"
+        os.makedirs(sample_dir, exist_ok=True)
+        
+        # Research-oriented sample data with TOC structure
+        research_documents = [
+            {
+                "segment_id": "research_001",
+                "title": "Machine Learning Fundamentals",
+                "level": 1,
+                "order": 1,
+                "text": "Machine learning algorithms enable computers to learn patterns from data without explicit programming. Supervised learning uses labeled datasets to train models for prediction tasks. Unsupervised learning discovers hidden patterns in unlabeled data through clustering and dimensionality reduction techniques.",
+                "state": "CA",
+                "language": "english"
+            },
+            {
+                "segment_id": "research_002", 
+                "title": "Deep Learning Applications",
+                "level": 2,
+                "order": 2,
+                "text": "Deep neural networks have revolutionized computer vision and natural language processing. Convolutional neural networks excel at image recognition tasks. Recurrent neural networks and transformers process sequential data for language modeling and machine translation applications.",
+                "state": "CA",
+                "language": "english"
+            },
+            {
+                "segment_id": "research_003",
+                "title": "Natural Language Processing Methods",
+                "level": 2,
+                "order": 3,
+                "text": "Natural language processing combines computational linguistics with machine learning. Text preprocessing includes tokenization, stemming, and stopword removal. Named entity recognition identifies people, organizations, and locations in text documents.",
+                "state": "NY",
+                "language": "english"
+            },
+            {
+                "segment_id": "research_004",
+                "title": "数据科学研究方法",
+                "level": 1,
+                "order": 4,
+                "text": "数据科学结合统计学、计算机科学和领域专业知识来分析复杂数据。机器学习算法用于预测建模和模式识别。数据可视化技术帮助研究人员理解数据分布和趋势。",
+                "state": "NY",
+                "language": "chinese"
+            },
+            {
+                "segment_id": "research_005",
+                "title": "人工智能伦理考量",
+                "level": 2,
+                "order": 5,
+                "text": "人工智能系统的公平性和透明度是重要的研究议题。算法偏见可能导致不公平的决策结果。可解释人工智能技术帮助理解模型的决策过程和推理逻辑。",
+                "state": "TX",
+                "language": "chinese"
+            },
+            {
+                "segment_id": "research_006",
+                "title": "Graph Neural Networks",
+                "level": 1,
+                "order": 6,
+                "text": "Graph neural networks extend deep learning to graph-structured data. Message passing algorithms aggregate information from neighboring nodes. Graph convolutional networks learn node representations for tasks like node classification and link prediction.",
+                "state": "TX",
+                "language": "english"
+            },
+            {
+                "segment_id": "research_007",
+                "title": "Network Analysis Techniques",
+                "level": 2,
+                "order": 7,
+                "text": "Social network analysis studies relationships between entities using graph theory. Centrality measures identify important nodes in networks. Community detection algorithms discover clusters of densely connected nodes in large networks.",
+                "state": "FL",
+                "language": "english"
+            },
+            {
+                "segment_id": "research_008",
+                "title": "Text Mining and Information Extraction",
+                "level": 2,
+                "order": 8,
+                "text": "Text mining extracts valuable information from unstructured text documents. Topic modeling techniques like Latent Dirichlet Allocation discover thematic structures. Sentiment analysis determines emotional polarity in text using machine learning classifiers.",
+                "state": "FL",
+                "language": "english"
+            }
+        ]
+        
+        # Save documents to separate files
+        self.input_files = []
+        for i, doc in enumerate(research_documents):
+            file_path = os.path.join(sample_dir, f"research_doc_{i+1:02d}.json")
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(doc, f, indent=2, ensure_ascii=False)
+            self.input_files.append(file_path)
+        
+        # Set directory settings
+        self.input_directory = sample_dir
+        self.pipeline_state['data_loaded'] = True
+        
+        print(f"✅ Created {len(research_documents)} research documents in: {sample_dir}")
+        print("📊 Sample data includes:")
+        print("   - Multi-language content (English & Chinese)")
+        print("   - Multiple research states (CA, NY, TX, FL)")
+        print("   - TOC-structured segments with hierarchical levels")
+        print("   - Research topics: ML, NLP, AI Ethics, Graph Networks")
+        print("🔬 Ready for research pipeline processing!")
+    
+    def run(self):
+        """Run research pipeline interface"""
+        while True:
+            self.print_menu()
+            choice = self.get_user_choice()
+            
+            if choice == "0":
+                print("\n👋 Research pipeline session ended. Thank you!")
+                break
+            
+            # Data Input & Directory Processing
+            elif choice == "1.1":
+                self.select_input_directory()
+            elif choice == "1.2":
+                self.set_output_directory()
+            elif choice == "1.3":
+                self.show_data_settings()
+            
+            # Text Cleaning & Normalization
+            elif choice == "2.1":
+                self.clean_and_normalize_text()
+            elif choice == "2.2":
+                self.export_cleaned_text()
+            elif choice == "2.3":
+                self.view_text_cleaning_results()
+            
+            # Token/Phrase Construction
+            elif choice == "3.1":
+                self.configure_phrase_parameters()
+            elif choice == "3.2":
+                self.extract_tokens_and_phrases()
+            elif choice == "3.3":
+                self.view_phrase_statistics()
+            
+            # Global Graph Construction
+            elif choice == "4.1":
+                self.build_global_graph()
+            elif choice == "4.2":
+                self.view_global_graph_statistics()
+            elif choice == "4.3":
+                self.export_global_graph_data()
+            
+            # Subgraph Activation
+            elif choice == "5.1":
+                self.activate_state_subgraphs()
+            elif choice == "5.2":
+                self.view_subgraph_comparisons()
+            elif choice == "5.3":
+                self.export_subgraph_data()
+            
+            # Visualization & Export
+            elif choice == "6.1":
+                self.generate_deterministic_visualizations()
+            elif choice == "6.2":
+                self.view_output_image_paths()
+            elif choice == "6.3":
+                self.export_complete_results()
+            elif choice == "6.4":
+                self.view_graph_nodes_and_data()
+            
+            # Reproducibility Controls
+            elif choice == "R.1":
+                self.configure_reproducibility_parameters()
+            elif choice == "R.2":
+                self.view_all_parameters()
+            elif choice == "R.3":
+                self.export_parameter_configuration()
+            
+            # Utilities
+            elif choice == "U.1":
+                self.create_sample_research_data()
+            elif choice == "U.2":
+                self.show_system_status()
+            elif choice == "U.3":
+                self.show_research_workflow_help()
+            
+            else:
+                print("❌ Invalid choice. Please select a valid option.")
+            
+            # Wait for user to continue (except for exit)
+            if choice != "0":
+                input("\n🔬 Press Enter to continue research workflow...")
+    
+    def show_system_status(self):
+        """Show system and pipeline status"""
+        print("\n💻 SYSTEM & PIPELINE STATUS")
+        print("-" * 50)
+        print(f"Python version: {sys.version}")
+        print(f"Operating system: {os.name}")
+        print(f"Current directory: {os.getcwd()}")
+        print(f"Pipeline availability: {'✅ Available' if PIPELINE_AVAILABLE else '❌ Unavailable'}")
+        if not PIPELINE_AVAILABLE:
+            print(f"Import error: {IMPORT_ERROR}")
+        
+        print(f"\n🔬 RESEARCH PIPELINE STATE:")
+        for step, completed in self.pipeline_state.items():
+            status = "✅ Completed" if completed else "⏳ Pending"
+            print(f"   {step.replace('_', ' ').title()}: {status}")
+    
+    def show_research_workflow_help(self):
+        """Show research workflow help"""
+        print("\n📖 RESEARCH WORKFLOW HELP")
+        print("-" * 50)
+        print("🔬 This is a research-oriented text-to-co-occurrence-graph pipeline.")
+        print("📋 Follow the fixed workflow order for reproducible results:")
+        print()
+        print("WORKFLOW STEPS:")
+        print("1️⃣ Data Input: Select directory with text documents")
+        print("2️⃣ Text Cleaning: Clean and normalize with preview/export")
+        print("3️⃣ Phrase Construction: Extract tokens/phrases with parameters")
+        print("4️⃣ Global Graph: Build shared co-occurrence node space")
+        print("5️⃣ Subgraph Activation: Filter global graph by state/group")
+        print("6️⃣ Visualization: Generate deterministic layouts and export")
+        print()
+        print("REPRODUCIBILITY FEATURES:")
+        print("🌱 Fixed random seed for deterministic results")
+        print("🪟 Explicit co-occurrence window (TOC segment = one window)")
+        print("⚖️ Configurable edge weight and phrase strategies")
+        print("📊 Parameter export for complete traceability")
+        print("🎯 Clear distinction between global graph and subgraphs")
+        print()
+        print("SUPPORTED FORMATS:")
+        print("📁 Input: JSON, TXT, MD files (batch directory processing)")
+        print("💾 Output: JSON data, PNG visualizations, parameter configs")
+        print()
+        print("For issues, check system status (U.2) and ensure workflow order.")
+    
+    def load_input_data(self):
+        """Load input data from selected files"""
+        if not self.input_files:
+            print("📝 No input files selected")
+            return []
+        
+        all_data = []
+        for file_path in self.input_files:
+            try:
+                print(f"📖 Loading: {os.path.relpath(file_path, self.input_directory) if self.input_directory else file_path}")
+                
+                # Extract state from folder path
+                state = "Unknown"
+                if self.input_directory:
+                    rel_path = os.path.relpath(file_path, self.input_directory)
+                    path_parts = rel_path.split(os.sep)
+                    if len(path_parts) > 1:
+                        # Use the immediate parent folder as state
+                        state = path_parts[-2]
+                    else:
+                        # Use the base directory name as state
+                        state = os.path.basename(self.input_directory)
+                
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    if file_path.endswith('.json'):
+                        data = json.load(f)
+                        if isinstance(data, list):
+                            # Update state for each document in the list
+                            for doc in data:
+                                if 'state' not in doc or doc['state'] == 'Unknown':
+                                    doc['state'] = state
+                            all_data.extend(data)
+                        else:
+                            # Update state for single document
+                            if 'state' not in data or data['state'] == 'Unknown':
+                                data['state'] = state
+                            all_data.append(data)
+                    else:
+                        # Handle text files
+                        content = f.read()
+                        doc_data = {
+                            "segment_id": f"text_{len(all_data)+1}",
+                            "title": os.path.basename(file_path),
+                            "level": 1,
+                            "order": len(all_data)+1,
+                            "text": content,
+                            "state": state,  # Use extracted state instead of "Unknown"
+                            "language": self.reproducibility_config['language_detection'] if self.reproducibility_config['language_detection'] != "auto" else "english"
+                        }
+                        all_data.append(doc_data)
+                        
+            except Exception as e:
+                print(f"❌ Failed to load {file_path}: {e}")
+        
+        print(f"✅ Loaded {len(all_data)} documents total")
+        return all_data
+    
+
+    
+
+
+def main():
+    """Main function for research pipeline"""
+    try:
+        app = ResearchPipelineCLI()
+        app.run()
+    except KeyboardInterrupt:
+        print("\n\n👋 Research pipeline interrupted by user. Goodbye!")
+        return 0
+    except Exception as e:
+        print(f"❌ Research pipeline startup failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return 1
+    
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

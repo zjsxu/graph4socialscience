@@ -1,0 +1,9 @@
+{
+  "segment_id": "sample_004",
+  "title": "自然语言处理技术",
+  "level": 2,
+  "order": 4,
+  "text": "自然语言处理技术包括文本分析、语义理解和机器翻译。深度学习方法在自然语言处理领域取得了显著进展。",
+  "state": "NY",
+  "language": "chinese"
+}

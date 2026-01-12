@@ -1,0 +1,9 @@
+{
+  "segment_id": "demo_001",
+  "title": "Introduction to Machine Learning",
+  "level": 1,
+  "order": 1,
+  "text": "Machine learning is a subset of artificial intelligence that focuses on algorithms and statistical models. Natural language processing is an important application of machine learning.",
+  "state": "CA",
+  "language": "en"
+}
