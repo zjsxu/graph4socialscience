@@ -2029,7 +2029,7 @@ class ResearchPipelineCLI:
         print("\n📊 EXPORT GRAPH NODES & DATA DETAILS")
         print("-" * 60)
         
-        # Check if visualizations have been generated
+        # Check prerequisites
         if not hasattr(self, 'visualization_paths') or not self.visualization_paths:
             print("⚠️ No visualizations generated yet. Please run step 6.1 first.")
             return
@@ -2038,7 +2038,7 @@ class ResearchPipelineCLI:
             print("⚠️ No global graph available. Please run step 4.1 first.")
             return
         
-        # Show available graphs for selection
+        # Show available graphs
         print("📈 Available graphs for analysis:")
         print("0. Global Graph (complete network)")
         
@@ -2049,7 +2049,6 @@ class ResearchPipelineCLI:
                 available_subgraphs.append((state, subgraph))
         
         print("A. All graphs (global + 3 random subgraphs)")
-        print()
         
         # Get user selection
         choice = self.get_user_choice("Select graph to analyze", 
@@ -2091,156 +2090,140 @@ class ResearchPipelineCLI:
         """Export detailed data for a single graph to document"""
         
         # Prepare filename
-        filename = f"graph_analysis_{graph_name}_{timestamp}.txt"
+        filename = f"graph_data_{graph_name}_{timestamp}.txt"
         filepath = os.path.join(output_dir, filename)
         
         with open(filepath, 'w', encoding='utf-8') as f:
-            # Header
-            f.write(f"GRAPH ANALYSIS REPORT: {graph_name.upper()}\n")
-            f.write(f"Generated: {datetime.now().isoformat()}\n")
-            f.write(f"Random Seed: {self.reproducibility_config['random_seed']}\n")
-            f.write("=" * 80 + "\n\n")
+            # Minimal header with essential info
+            f.write(f"# Graph Data Export: {graph_name.upper()}\n")
+            f.write(f"# Timestamp: {datetime.now().isoformat()}\n")
+            f.write(f"# Random_Seed: {self.reproducibility_config['random_seed']}\n\n")
             
-            # Basic graph metrics
-            f.write("GRAPH STRUCTURE\n")
-            f.write("-" * 40 + "\n")
-            f.write(f"nodes: {graph.number_of_nodes()}\n")
-            f.write(f"edges: {graph.number_of_edges()}\n")
-            f.write(f"density: {nx.density(graph):.6f}\n")
-            f.write(f"connected_components: {nx.number_connected_components(graph)}\n")
-            f.write(f"isolated_nodes: {len(list(nx.isolates(graph)))}\n")
-            f.write("\n")
+            # Graph structure - raw data only
+            f.write("# GRAPH_STRUCTURE\n")
+            f.write(f"nodes={graph.number_of_nodes()}\n")
+            f.write(f"edges={graph.number_of_edges()}\n")
+            f.write(f"density={nx.density(graph):.6f}\n")
+            f.write(f"connected_components={nx.number_connected_components(graph)}\n")
+            f.write(f"isolated_nodes={len(list(nx.isolates(graph)))}\n\n")
             
-            # Node attributes and data
-            f.write("NODE DATA\n")
-            f.write("-" * 40 + "\n")
-            
-            # Get all node attributes
+            # All node data - complete attribute table
+            f.write("# NODE_DATA\n")
             all_attributes = set()
             for node in graph.nodes():
                 all_attributes.update(graph.nodes[node].keys())
             
-            # Write header
-            f.write("node_id\t")
+            # Header row
+            f.write("node_id")
             for attr in sorted(all_attributes):
-                f.write(f"{attr}\t")
+                f.write(f"\t{attr}")
             f.write("\n")
             
-            # Write node data
+            # Data rows
             for node in sorted(graph.nodes()):
-                f.write(f"{node}\t")
+                f.write(f"{node}")
                 for attr in sorted(all_attributes):
                     value = graph.nodes[node].get(attr, "")
-                    # Handle different data types
                     if isinstance(value, (list, tuple, np.ndarray)):
                         if len(value) == 2:  # Position coordinates
-                            value = f"[{value[0]:.6f},{value[1]:.6f}]"
+                            value = f"{value[0]:.6f},{value[1]:.6f}"
                         else:
-                            value = str(value)
+                            value = str(value).replace('\t', ' ')
                     elif isinstance(value, float):
                         value = f"{value:.6f}"
-                    f.write(f"{value}\t")
+                    f.write(f"\t{value}")
                 f.write("\n")
             f.write("\n")
             
-            # Edge data
-            f.write("EDGE DATA\n")
-            f.write("-" * 40 + "\n")
-            
+            # All edge data - complete attribute table
+            f.write("# EDGE_DATA\n")
             if graph.number_of_edges() > 0:
-                # Get all edge attributes
                 edge_attributes = set()
                 for u, v, data in graph.edges(data=True):
                     edge_attributes.update(data.keys())
                 
-                # Write header
-                f.write("source\ttarget\t")
+                # Header row
+                f.write("source\ttarget")
                 for attr in sorted(edge_attributes):
-                    f.write(f"{attr}\t")
+                    f.write(f"\t{attr}")
                 f.write("\n")
                 
-                # Write edge data
+                # Data rows
                 for u, v, data in graph.edges(data=True):
-                    f.write(f"{u}\t{v}\t")
+                    f.write(f"{u}\t{v}")
                     for attr in sorted(edge_attributes):
                         value = data.get(attr, "")
                         if isinstance(value, float):
                             value = f"{value:.6f}"
-                        f.write(f"{value}\t")
+                        f.write(f"\t{value}")
                     f.write("\n")
             else:
-                f.write("no_edges\n")
+                f.write("# No edges in graph\n")
             f.write("\n")
             
-            # Processing parameters used
-            f.write("PROCESSING PARAMETERS\n")
-            f.write("-" * 40 + "\n")
-            for key, value in self.reproducibility_config.items():
-                f.write(f"{key}: {value}\n")
+            # Processing parameters - all variables used
+            f.write("# PROCESSING_PARAMETERS\n")
+            for key, value in sorted(self.reproducibility_config.items()):
+                f.write(f"{key}={value}\n")
             f.write("\n")
             
-            # Graph construction parameters
+            # Graph construction config if available
             if hasattr(self, 'graph_construction_config'):
-                f.write("GRAPH CONSTRUCTION PARAMETERS\n")
-                f.write("-" * 40 + "\n")
-                for key, value in self.graph_construction_config.items():
-                    f.write(f"{key}: {value}\n")
+                f.write("# GRAPH_CONSTRUCTION_CONFIG\n")
+                for key, value in sorted(self.graph_construction_config.items()):
+                    f.write(f"{key}={value}\n")
                 f.write("\n")
             
-            # Source data statistics
+            # Source data metrics
             if hasattr(self, 'cleaned_text_data') and self.cleaned_text_data:
-                f.write("SOURCE DATA STATISTICS\n")
-                f.write("-" * 40 + "\n")
-                
-                # Overall statistics
+                f.write("# SOURCE_DATA_METRICS\n")
                 total_docs = len(self.cleaned_text_data)
                 total_tokens = sum(doc['token_count'] for doc in self.cleaned_text_data)
-                f.write(f"total_documents: {total_docs}\n")
-                f.write(f"total_tokens: {total_tokens}\n")
-                f.write(f"avg_tokens_per_doc: {total_tokens/total_docs:.2f}\n")
-                
-                # State-wise statistics
+                f.write(f"total_documents={total_docs}\n")
+                f.write(f"total_tokens={total_tokens}\n")
+                f.write(f"avg_tokens_per_doc={total_tokens/total_docs:.2f}\n")
+
+                # State distribution
                 state_stats = defaultdict(lambda: {'docs': 0, 'tokens': 0})
                 for doc in self.cleaned_text_data:
                     state = doc['state']
                     state_stats[state]['docs'] += 1
                     state_stats[state]['tokens'] += doc['token_count']
                 
-                f.write("\nstate_statistics:\n")
+                f.write("# STATE_DISTRIBUTION\n")
                 for state, stats in sorted(state_stats.items()):
-                    f.write(f"  {state}: docs={stats['docs']}, tokens={stats['tokens']}\n")
+                    f.write(f"{state}_docs={stats['docs']}\n")
+                    f.write(f"{state}_tokens={stats['tokens']}\n")
                 f.write("\n")
             
-            # Phrase extraction data
+            # Phrase extraction metrics
             if hasattr(self, 'phrase_data') and self.phrase_data:
-                f.write("PHRASE EXTRACTION DATA\n")
-                f.write("-" * 40 + "\n")
-                f.write(f"total_phrase_instances: {len(self.phrase_data['all_phrases'])}\n")
-                f.write(f"unique_phrases: {len(self.phrase_data['phrase_counts'])}\n")
-                f.write(f"filtered_phrases: {len(self.phrase_data['filtered_phrases'])}\n")
-                f.write(f"min_frequency_threshold: {self.reproducibility_config['min_phrase_frequency']}\n")
-                f.write(f"phrase_type: {self.reproducibility_config['phrase_type']}\n")
+                f.write("# PHRASE_EXTRACTION_METRICS\n")
+                f.write(f"total_phrase_instances={len(self.phrase_data['all_phrases'])}\n")
+                f.write(f"unique_phrases={len(self.phrase_data['phrase_counts'])}\n")
+                f.write(f"filtered_phrases={len(self.phrase_data['filtered_phrases'])}\n")
+                f.write(f"min_frequency_threshold={self.reproducibility_config['min_phrase_frequency']}\n")
+                f.write(f"phrase_type={self.reproducibility_config['phrase_type']}\n")
                 
-                # Phrase frequency distribution
-                f.write("\nphrase_frequencies:\n")
+                # Top phrases only (first 50)
+                f.write("# TOP_PHRASES\n")
                 sorted_phrases = sorted(self.phrase_data['filtered_phrases'].items(), 
                                       key=lambda x: x[1], reverse=True)
-                for phrase, freq in sorted_phrases:
-                    f.write(f"  {phrase}: {freq}\n")
+                for phrase, freq in sorted_phrases[:50]:
+                    f.write(f"{phrase}={freq}\n")
                 f.write("\n")
             
-            # Layout algorithm data
+            # Layout algorithm parameters
             if hasattr(self, 'global_layout_positions') and self.global_layout_positions:
-                f.write("LAYOUT ALGORITHM DATA\n")
-                f.write("-" * 40 + "\n")
-                f.write(f"algorithm: spring_layout\n")
-                f.write(f"iterations: 50\n")
-                f.write(f"k_parameter: 1.0\n")
-                f.write(f"random_seed: {self.reproducibility_config['random_seed']}\n")
-                f.write(f"positions_computed: {len(self.global_layout_positions)}\n")
+                f.write("# LAYOUT_ALGORITHM_PARAMS\n")
+                f.write(f"algorithm=spring_layout\n")
+                f.write(f"iterations=50\n")
+                f.write(f"k_parameter=1.0\n")
+                f.write(f"random_seed={self.reproducibility_config['random_seed']}\n")
+                f.write(f"positions_computed={len(self.global_layout_positions)}\n")
                 f.write("\n")
         
-        print(f"✅ Exported {graph_name} analysis: {filename}")
+        print(f"✅ Exported {graph_name} data: {filename}")
         return filepath
     
     def create_sample_research_data(self):

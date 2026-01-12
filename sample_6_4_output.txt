@@ -1,0 +1,80 @@
+# Graph Data Export: GLOBAL
+# Timestamp: 2026-01-12T15:08:13.280472
+# Random_Seed: 42
+
+# GRAPH_STRUCTURE
+nodes=7939
+edges=335142
+density=0.010606
+connected_components=1
+isolated_nodes=0
+
+# NODE_DATA
+node_id	centrality_betweenness	centrality_closeness	centrality_degree	centrality_eigenvector	centrality_pagerank	community	frequency	pos	role
+academic	0.000123	0.234567	0.012345	0.001234	0.000567	5	15	-0.123456,0.789012	core
+achievement	0.000089	0.198765	0.009876	0.000987	0.000432	5	12	0.345678,-0.567890	periphery
+activities	0.000156	0.267890	0.015678	0.001567	0.000678	8	18	0.789012,0.123456	core
+administration	0.000234	0.345678	0.023456	0.002345	0.000890	12	25	-0.567890,-0.345678	core
+
+# EDGE_DATA
+source	target	weight
+academic	achievement	3.000000
+academic	activities	5.000000
+achievement	activities	2.000000
+administration	academic	4.000000
+
+# PROCESSING_PARAMETERS
+cooccurrence_window=toc_segment
+edge_weight_strategy=frequency_count
+language_detection=auto
+layout_algorithm=spring_deterministic
+min_phrase_frequency=2
+phrase_type=mixed
+random_seed=42
+stopword_strategy=dynamic_tfidf
+
+# GRAPH_CONSTRUCTION_CONFIG
+edge_weight_method=binary
+min_cooccurrence_count=1
+preserve_isolated_nodes=true
+use_sparse_matrix=true
+window_type=segment
+
+# SOURCE_DATA_METRICS
+total_documents=107
+total_tokens=39755
+avg_tokens_per_doc=371.54
+
+# STATE_DISTRIBUTION
+NSR_CA_docs=2
+NSR_CA_tokens=1810
+SR_CA_docs=8
+SR_CA_tokens=6420
+NSR_OK_docs=4
+NSR_OK_tokens=2890
+
+# PHRASE_EXTRACTION_METRICS
+total_phrase_instances=74988
+unique_phrases=33108
+filtered_phrases=7939
+min_frequency_threshold=2
+phrase_type=mixed
+
+# TOP_PHRASES
+student=1245
+school=987
+parent=876
+handbook=654
+policy=543
+conduct=432
+education=398
+academic=365
+administration=321
+activities=298
+
+# LAYOUT_ALGORITHM_PARAMS
+algorithm=spring_layout
+iterations=50
+k_parameter=1.0
+random_seed=42
+positions_computed=7939
