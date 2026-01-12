@@ -1695,14 +1695,8 @@ class ResearchPipelineCLI:
             print(f"   Total edges across subgraphs: {total_edges}")
             print(f"   Re-weighted edges: {total_reweighted_edges} ({reweight_pct:.1f}%)")
             print(f"   Preserved edges: {total_preserved_edges} ({100-reweight_pct:.1f}%)")
-                components = nx.number_connected_components(subgraph)
-            else:
-                density = 0
-                components = 1 if node_count == 1 else 0
-            
-            # Count communities represented in this subgraph
-            communities_in_subgraph = set()
-            core_nodes_count = 0
+    
+    def export_subgraph_data(self):
             for node in subgraph.nodes():
                 if node in self.global_graph_object.nodes:
                     community = self.global_graph_object.nodes[node].get('community', 0)
