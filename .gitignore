@@ -91,3 +91,6 @@ config/user_*.json
 
 # Documentation builds
 docs/_build/
+
+# External repositories
+Easy-Graph/
