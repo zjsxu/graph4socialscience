@@ -729,6 +729,8 @@ class ResearchPipelineCLI:
             'min_edge_weight': 2,  # Minimum co-occurrence count
             'core_node_percentile': 0.2,  # Top 20% nodes are "core"
             'community_layout_separation': 2.0,  # Separation factor between communities
+            'sliding_window_size': 5,  # Sliding window for co-occurrence
+            'min_cooccurrence_threshold': 3,  # Minimum global co-occurrence threshold
         }
         
         try:
@@ -738,62 +740,173 @@ class ResearchPipelineCLI:
             np.random.seed(self.reproducibility_config['random_seed'])
             
             filtered_phrases = self.phrase_data['filtered_phrases']
-            phrase_list = list(filtered_phrases.keys())
+            
+            # A. STRUCTURAL TOKEN FILTERING - Remove structural tokens before node creation
+            print("🔧 Applying structural token filtering...")
+            
+            import re
+            structural_patterns = [
+                r'^\d+(\.\d+)*$',  # Pure TOC numbering: 1, 1.1, 1.2.3
+                r'^\d+\.$',        # Numbered items: 1., 2., 3.
+                r'^\d{4}[-–]\d{4}$',  # Year ranges: 2024-2025, 2024–2025
+                r'^\d{4}$',        # Single years: 2024, 2025
+            ]
+            
+            # Compile patterns for efficiency
+            compiled_patterns = [re.compile(pattern) for pattern in structural_patterns]
+            
+            # Stopwords for semantic phrase filtering
+            stopwords = {'and', 'or', 'of', 'the', 'are', 'be', 'to', 'for', 'with', 'in', 'on', 'at', 'by', 'from', 'as', 'is', 'was', 'will', 'can', 'may', 'shall', 'should', 'would', 'could'}
+            
+            semantically_filtered_phrases = {}
+            structural_tokens_removed = 0
+            semantic_tokens_removed = 0
+            
+            for phrase, count in filtered_phrases.items():
+                # Check for structural patterns
+                is_structural = False
+                
+                # Check pure structural patterns
+                for pattern in compiled_patterns:
+                    if pattern.match(phrase.strip()):
+                        is_structural = True
+                        break
+                
+                # Check for section numbers as suffix/prefix
+                if not is_structural:
+                    words = phrase.split()
+                    for word in words:
+                        # Check if word contains section numbers
+                        if re.search(r'\d+\.?\d*\.?$', word) or re.search(r'^\d+\.?\d*\.?', word):
+                            is_structural = True
+                            break
+                
+                if is_structural:
+                    structural_tokens_removed += 1
+                    continue
+                
+                # B. SEMANTIC PHRASE FILTERING - Apply semantic rules
+                words = phrase.lower().split()
+                
+                # Remove phrases starting or ending with stopwords
+                if words[0] in stopwords or words[-1] in stopwords:
+                    semantic_tokens_removed += 1
+                    continue
+                
+                # For bigrams, check if head is conjunction or auxiliary verb
+                if len(words) == 2:
+                    conjunctions = {'and', 'or', 'but', 'yet', 'so', 'nor'}
+                    auxiliaries = {'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'can', 'could', 'may', 'might', 'shall', 'should'}
+                    
+                    if words[0] in conjunctions or words[0] in auxiliaries:
+                        semantic_tokens_removed += 1
+                        continue
+                
+                # Keep only phrases with at least one content word (simplified check)
+                content_indicators = any(len(word) > 3 for word in words)  # Simple heuristic for content words
+                if not content_indicators:
+                    semantic_tokens_removed += 1
+                    continue
+                
+                # Phrase passed all filters
+                semantically_filtered_phrases[phrase] = count
+            
+            print(f"   📊 Original phrases: {len(filtered_phrases)}")
+            print(f"   📊 Structural tokens removed: {structural_tokens_removed}")
+            print(f"   📊 Semantic tokens removed: {semantic_tokens_removed}")
+            print(f"   📊 Final phrases: {len(semantically_filtered_phrases)}")
+            
+            phrase_list = list(semantically_filtered_phrases.keys())
             
             # CREATE NETWORKX GRAPH OBJECT (not just adjacency data)
             self.global_graph_object = nx.Graph()
             
-            # Add all phrases as nodes with attributes
+            # Add all phrases as nodes with semantic attributes
             for phrase in phrase_list:
+                # Calculate TF-IDF score (simplified)
+                frequency = semantically_filtered_phrases[phrase]
+                total_docs = len(self.cleaned_text_data)
+                doc_frequency = sum(1 for doc in self.cleaned_text_data if phrase in ' '.join(doc['tokens']))
+                
+                # Simple TF-IDF calculation
+                tf = frequency
+                idf = np.log(total_docs / (doc_frequency + 1))  # +1 to avoid division by zero
+                tfidf_score = tf * idf
+                
                 self.global_graph_object.add_node(
                     phrase, 
-                    frequency=filtered_phrases[phrase],
+                    raw_phrase=phrase,
+                    frequency=frequency,
+                    tf_idf_score=tfidf_score,
+                    is_structural=False,  # All remaining phrases are non-structural
                     phrase_type='bigram' if ' ' in phrase else 'unigram'
                 )
             
-            # Calculate co-occurrences and add as weighted edges
+            # C. CONSTRAINED CO-OCCURRENCE EDGE CREATION - Use sliding window approach
+            print("🔧 Computing co-occurrences with sliding window constraint...")
             cooccurrence_counts = defaultdict(int)
             
-            # Process each document for co-occurrences
+            # Process each document for co-occurrences with sliding window
             for doc in tqdm(self.cleaned_text_data, desc="🌐 Building co-occurrences", unit="doc"):
-                doc_phrases = []
                 tokens = doc['tokens']
                 
-                # Extract phrases from this document
-                if self.reproducibility_config['phrase_type'] in ['word', 'mixed']:
-                    doc_phrases.extend([token for token in tokens if token in filtered_phrases])
+                # Extract valid phrases from this document
+                doc_phrases = []
                 
+                # Extract unigrams
+                if self.reproducibility_config['phrase_type'] in ['word', 'mixed']:
+                    doc_phrases.extend([token for token in tokens if token in semantically_filtered_phrases])
+                
+                # Extract bigrams
                 if self.reproducibility_config['phrase_type'] in ['bigram', 'mixed']:
                     for i in range(len(tokens) - 1):
                         bigram = f"{tokens[i]} {tokens[i+1]}"
-                        if bigram in filtered_phrases:
+                        if bigram in semantically_filtered_phrases:
                             doc_phrases.append(bigram)
                 
-                # Calculate co-occurrences within document (TOC segment window)
-                for i, phrase1 in enumerate(doc_phrases):
-                    for phrase2 in doc_phrases[i+1:]:
-                        if phrase1 != phrase2:
-                            edge = tuple(sorted([phrase1, phrase2]))
-                            cooccurrence_counts[edge] += 1
+                # Apply sliding window for co-occurrence calculation
+                window_size = self.graph_construction_config['sliding_window_size']
+                
+                for i in range(len(doc_phrases)):
+                    # Define window boundaries
+                    window_start = max(0, i - window_size // 2)
+                    window_end = min(len(doc_phrases), i + window_size // 2 + 1)
+                    
+                    phrase1 = doc_phrases[i]
+                    
+                    # Count co-occurrences within window
+                    for j in range(window_start, window_end):
+                        if i != j:
+                            phrase2 = doc_phrases[j]
+                            if phrase1 != phrase2:
+                                edge = tuple(sorted([phrase1, phrase2]))
+                                cooccurrence_counts[edge] += 1
+            
+            # Apply minimum co-occurrence threshold
+            min_cooccurrence = self.graph_construction_config['min_cooccurrence_threshold']
+            filtered_cooccurrences = {edge: count for edge, count in cooccurrence_counts.items() 
+                                    if count >= min_cooccurrence}
+            
+            print(f"   📊 Raw co-occurrences: {len(cooccurrence_counts)}")
+            print(f"   📊 After min threshold ({min_cooccurrence}): {len(filtered_cooccurrences)}")
             
             # STRUCTURAL FILTERING: Apply edge filtering at construction time
             print("🔧 Applying structural filtering to reduce graph density...")
             
             # Filter edges by minimum weight threshold
             min_weight = self.graph_construction_config['min_edge_weight']
-            filtered_edges = {edge: weight for edge, weight in cooccurrence_counts.items() 
-                            if weight >= min_weight}
+            weight_filtered_edges = {edge: weight for edge, weight in filtered_cooccurrences.items() 
+                                   if weight >= min_weight}
             
-            print(f"   📊 Raw edges: {len(cooccurrence_counts)}")
-            print(f"   📊 After min weight filter ({min_weight}): {len(filtered_edges)}")
+            print(f"   📊 After min weight filter ({min_weight}): {len(weight_filtered_edges)}")
             
             # Apply density reduction: keep only top percentile of edges by weight
-            if filtered_edges:
-                edge_weights = list(filtered_edges.values())
+            if weight_filtered_edges:
+                edge_weights = list(weight_filtered_edges.values())
                 density_threshold = np.percentile(edge_weights, 
                                                 (1 - self.graph_construction_config['edge_density_reduction']) * 100)
                 
-                final_edges = {edge: weight for edge, weight in filtered_edges.items() 
+                final_edges = {edge: weight for edge, weight in weight_filtered_edges.items() 
                              if weight >= density_threshold}
                 
                 print(f"   📊 After density reduction ({self.graph_construction_config['edge_density_reduction']*100:.1f}%): {len(final_edges)}")
@@ -1044,7 +1157,16 @@ class ResearchPipelineCLI:
         print(f"   Nodes (phrases): {G.number_of_nodes()}")
         print(f"   Edges (co-occurrences): {G.number_of_edges()}")
         
-        # Show filtering impact
+        # Show structural filtering impact
+        if hasattr(self, 'phrase_data') and 'filtered_phrases' in self.phrase_data:
+            original_phrases = len(self.phrase_data['filtered_phrases'])
+            current_nodes = G.number_of_nodes()
+            structural_removed = original_phrases - current_nodes
+            print(f"   Original phrases (before structural filtering): {original_phrases}")
+            print(f"   Structural tokens removed: {structural_removed}")
+            print(f"   Structural filtering reduction: {structural_removed/original_phrases*100:.1f}%")
+        
+        # Show edge filtering impact
         if hasattr(self, 'raw_cooccurrence_counts'):
             raw_edge_count = len(self.raw_cooccurrence_counts)
             filtered_edge_count = G.number_of_edges()
@@ -1053,9 +1175,20 @@ class ResearchPipelineCLI:
             print(f"   Filtered edges: {filtered_edge_count}")
             print(f"   Edge reduction: {reduction_pct:.1f}%")
         
+        # Density comparison (before vs after filtering)
         if G.number_of_nodes() > 1:
-            density = nx.density(G)
-            print(f"   Graph density: {density * 100:.2f}%")
+            current_density = nx.density(G)
+            print(f"   Current graph density: {current_density * 100:.2f}%")
+            
+            # Calculate theoretical density before filtering
+            if hasattr(self, 'raw_cooccurrence_counts') and hasattr(self, 'phrase_data'):
+                original_nodes = len(self.phrase_data.get('filtered_phrases', {}))
+                if original_nodes > 1:
+                    max_possible_edges = original_nodes * (original_nodes - 1) / 2
+                    raw_edges = len(self.raw_cooccurrence_counts)
+                    original_density = raw_edges / max_possible_edges
+                    print(f"   Density before filtering: {original_density * 100:.2f}%")
+                    print(f"   Density reduction: {(original_density - current_density) * 100:.2f} percentage points")
         
         # Connected components analysis
         if G.number_of_nodes() > 0:
@@ -1064,6 +1197,10 @@ class ResearchPipelineCLI:
             if len(components) > 1:
                 largest_cc = max(components, key=len)
                 print(f"   Largest component size: {len(largest_cc)} nodes")
+                
+                # Show component size distribution
+                component_sizes = sorted([len(comp) for comp in components], reverse=True)
+                print(f"   Component sizes: {component_sizes[:5]}{'...' if len(component_sizes) > 5 else ''}")
             
             # Isolated nodes count
             isolated_nodes = list(nx.isolates(G))
@@ -1080,7 +1217,8 @@ class ResearchPipelineCLI:
             for node, community in nx.get_node_attributes(G, 'community').items():
                 community_sizes[community] += 1
             
-            print(f"   Community sizes: {dict(community_sizes)}")
+            sorted_communities = sorted(community_sizes.items(), key=lambda x: x[1], reverse=True)
+            print(f"   Largest communities: {dict(sorted_communities[:5])}")
         
         # Node roles analysis
         node_roles = nx.get_node_attributes(G, 'role')
@@ -1093,6 +1231,20 @@ class ResearchPipelineCLI:
             for role, count in role_counts.items():
                 pct = count / len(node_roles) * 100
                 print(f"   {role.title()} nodes: {count} ({pct:.1f}%)")
+        
+        # Semantic attributes analysis
+        tf_idf_scores = nx.get_node_attributes(G, 'tf_idf_score')
+        if tf_idf_scores:
+            print(f"\n📊 SEMANTIC ATTRIBUTES:")
+            print(f"   Nodes with TF-IDF scores: {len(tf_idf_scores)}")
+            print(f"   Average TF-IDF score: {np.mean(list(tf_idf_scores.values())):.3f}")
+            print(f"   Max TF-IDF score: {max(tf_idf_scores.values()):.3f}")
+            
+            # Top nodes by TF-IDF
+            top_tfidf = sorted(tf_idf_scores.items(), key=lambda x: x[1], reverse=True)[:5]
+            print(f"   Top 5 by TF-IDF:")
+            for i, (node, score) in enumerate(top_tfidf, 1):
+                print(f"     {i}. {node} ({score:.3f})")
         
         # Edge weight distribution
         if G.number_of_edges() > 0:
@@ -1110,7 +1262,8 @@ class ResearchPipelineCLI:
             print(f"\n📊 TOP 5 IMPORTANT NODES (combined score):")
             for i, (node, importance) in enumerate(top_important_nodes, 1):
                 role = node_roles.get(node, 'unknown')
-                print(f"   {i}. {node} (importance: {importance:.3f}, role: {role})")
+                tfidf = tf_idf_scores.get(node, 0) if tf_idf_scores else 0
+                print(f"   {i}. {node} (importance: {importance:.3f}, TF-IDF: {tfidf:.3f}, role: {role})")
         
         # Top co-occurring pairs (from NetworkX edges)
         if G.number_of_edges() > 0:
@@ -1125,6 +1278,16 @@ class ResearchPipelineCLI:
             print(f"   2D positions computed: {len(self.global_layout_positions)} nodes")
             print(f"   Layout algorithm: {self.reproducibility_config['layout_algorithm']}")
             print(f"   Random seed: {self.reproducibility_config['random_seed']}")
+            
+        # Filtering configuration summary
+        if hasattr(self, 'graph_construction_config'):
+            print(f"\n🔧 FILTERING CONFIGURATION:")
+            config = self.graph_construction_config
+            print(f"   Sliding window size: {config.get('sliding_window_size', 'N/A')}")
+            print(f"   Min co-occurrence threshold: {config.get('min_cooccurrence_threshold', 'N/A')}")
+            print(f"   Min edge weight: {config.get('min_edge_weight', 'N/A')}")
+            print(f"   Edge density reduction: {config.get('edge_density_reduction', 'N/A')}")
+            print(f"   Core node percentile: {config.get('core_node_percentile', 'N/A')}")
             print(f"   Positions stored as node attributes: ✅")
             print(f"   Community-aware layout: ✅")
     
@@ -1245,6 +1408,7 @@ class ResearchPipelineCLI:
         print("-" * 60)
         print("🔬 Creating NetworkX subgraph views from global graph (NOT rebuilding)")
         print("🌐 Subgraphs share the same node space and positions as the global graph")
+        print("⚖️ Using re-weighting approach to preserve global structure")
         
         try:
             print("⏳ Activating state-based NetworkX subgraphs...")
@@ -1263,32 +1427,99 @@ class ResearchPipelineCLI:
             for state, docs in tqdm(state_documents.items(), desc="🗺️ Activating subgraphs", unit="state"):
                 print(f"   🗺️ Processing state: {state} ({len(docs)} documents)")
                 
+                # B. FIXED SUBGRAPH ACTIVATION LOGIC:
+                # 1. Use global graph as base (NOT rebuild from scratch)
+                # 2. Select edges whose co-occurrence windows belong to target state
+                # 3. Re-weight edges instead of re-creating nodes
+                # 4. Preserve global node positions
+                # 5. Allow isolated nodes to remain
+                
                 # Get phrases that appear in this state's documents
                 state_phrases = set()
+                state_cooccurrences = defaultdict(int)
+                
+                # Calculate state-specific co-occurrences for re-weighting
                 for doc in docs:
                     tokens = doc['tokens']
+                    doc_phrases = []
                     
-                    # Add phrases from this state's documents
+                    # Extract phrases from this state's documents
                     if self.reproducibility_config['phrase_type'] in ['word', 'mixed']:
-                        state_phrases.update([token for token in tokens if token in self.phrase_data['filtered_phrases']])
+                        doc_phrases.extend([token for token in tokens if token in self.phrase_data['filtered_phrases']])
                     
                     if self.reproducibility_config['phrase_type'] in ['bigram', 'mixed']:
                         for i in range(len(tokens) - 1):
                             bigram = f"{tokens[i]} {tokens[i+1]}"
                             if bigram in self.phrase_data['filtered_phrases']:
-                                state_phrases.add(bigram)
+                                doc_phrases.append(bigram)
+                    
+                    # Add to state phrases
+                    state_phrases.update(doc_phrases)
+                    
+                    # Calculate state-specific co-occurrences using sliding window
+                    window_size = self.graph_construction_config.get('sliding_window_size', 5)
+                    
+                    for i in range(len(doc_phrases)):
+                        window_start = max(0, i - window_size // 2)
+                        window_end = min(len(doc_phrases), i + window_size // 2 + 1)
+                        
+                        phrase1 = doc_phrases[i]
+                        
+                        for j in range(window_start, window_end):
+                            if i != j:
+                                phrase2 = doc_phrases[j]
+                                if phrase1 != phrase2:
+                                    edge = tuple(sorted([phrase1, phrase2]))
+                                    state_cooccurrences[edge] += 1
                 
-                # Create NetworkX subgraph view (shares nodes and positions with global graph)
+                # Create NetworkX subgraph view with re-weighted edges
+                # Start with all nodes that appear in this state (including isolated ones)
                 state_nodes = [node for node in self.global_graph_object.nodes() if node in state_phrases]
                 
                 if state_nodes:
-                    # Create induced subgraph (preserves all edges between state nodes)
-                    state_subgraph = self.global_graph_object.subgraph(state_nodes)
+                    # Create induced subgraph (preserves structure from global graph)
+                    base_subgraph = self.global_graph_object.subgraph(state_nodes)
+                    
+                    # Create a copy to allow edge re-weighting
+                    state_subgraph = base_subgraph.copy()
+                    
+                    # Re-weight edges based on state-specific co-occurrences
+                    edges_to_remove = []
+                    for u, v, data in state_subgraph.edges(data=True):
+                        edge_key = tuple(sorted([u, v]))
+                        state_weight = state_cooccurrences.get(edge_key, 0)
+                        
+                        if state_weight > 0:
+                            # Re-weight edge based on state-specific co-occurrence
+                            state_subgraph[u][v]['weight'] = state_weight
+                            state_subgraph[u][v]['state_weight'] = state_weight
+                            state_subgraph[u][v]['global_weight'] = data.get('weight', 0)
+                        else:
+                            # Mark edge for removal if no state-specific co-occurrence
+                            edges_to_remove.append((u, v))
+                    
+                    # Remove edges with no state-specific support
+                    state_subgraph.remove_edges_from(edges_to_remove)
+                    
+                    # Preserve global node positions (for visualization consistency)
+                    global_positions = nx.get_node_attributes(self.global_graph_object, 'pos')
+                    nx.set_node_attributes(state_subgraph, global_positions, 'pos')
+                    
+                    # Copy other node attributes from global graph
+                    for attr in ['importance', 'role', 'community', 'tf_idf_score', 'frequency']:
+                        global_attr = nx.get_node_attributes(self.global_graph_object, attr)
+                        state_attr = {node: global_attr.get(node, 0) for node in state_subgraph.nodes()}
+                        nx.set_node_attributes(state_subgraph, state_attr, attr)
                     
                     # Store as NetworkX subgraph object
                     self.state_subgraph_objects[state] = state_subgraph
                     
+                    # Count isolated nodes (explicitly allowed to remain)
+                    isolated_count = len(list(nx.isolates(state_subgraph)))
+                    
                     print(f"      ✅ {state}: {state_subgraph.number_of_nodes()} nodes, {state_subgraph.number_of_edges()} edges")
+                    if isolated_count > 0:
+                        print(f"         Isolated nodes: {isolated_count} (preserved)")
                     
                     # Create legacy data structure for backward compatibility
                     state_edges = {}
@@ -1302,7 +1533,9 @@ class ResearchPipelineCLI:
                         'edges': state_edges,
                         'node_count': state_subgraph.number_of_nodes(),
                         'edge_count': state_subgraph.number_of_edges(),
+                        'isolated_nodes': isolated_count,
                         'document_count': len(docs),
+                        'activation_method': 'reweight',
                         'activation_timestamp': datetime.now().isoformat(),
                         'source_global_graph': True
                     }
@@ -1312,6 +1545,8 @@ class ResearchPipelineCLI:
             print(f"\n✅ State subgraph activation completed!")
             print(f"🗺️ Activated {len(self.state_subgraph_objects)} NetworkX state subgraphs")
             print(f"🎯 All subgraphs share positions from global layout")
+            print(f"⚖️ Edges re-weighted based on state-specific co-occurrences")
+            print(f"🔗 Isolated nodes preserved in subgraphs")
             
             self.pipeline_state['subgraphs_activated'] = True
             
@@ -1335,19 +1570,131 @@ class ResearchPipelineCLI:
         print(f"🗺️ SUBGRAPH OVERVIEW (NetworkX objects):")
         print(f"   Total states: {len(self.state_subgraph_objects)}")
         print(f"   Source: Global graph subviews (shared node space and positions)")
+        print(f"   Activation method: Re-weighting (preserves global structure)")
         
-        # Comparison table with enhanced metrics
+        # Enhanced comparison table with new metrics
         print(f"\n📋 STATE COMPARISON TABLE:")
-        print(f"{'State':<12} {'Docs':<6} {'Nodes':<8} {'Edges':<8} {'Density':<10} {'Communities':<12} {'Core Nodes':<12}")
-        print("-" * 85)
+        print(f"{'State':<12} {'Docs':<6} {'Nodes':<8} {'Edges':<8} {'Isolated':<10} {'Density':<10} {'LCC Size':<10} {'Density Δ':<12}")
+        print("-" * 100)
+        
+        global_density = nx.density(self.global_graph_object) if self.global_graph_object.number_of_nodes() > 1 else 0
         
         for state, subgraph in self.state_subgraph_objects.items():
             doc_count = len([doc for doc in self.cleaned_text_data if doc['state'] == state])
             node_count = subgraph.number_of_nodes()
             edge_count = subgraph.number_of_edges()
             
+            # Isolated node count
+            isolated_count = len(list(nx.isolates(subgraph)))
+            
+            # Density calculation
             if node_count > 1:
                 density = nx.density(subgraph) * 100
+                density_diff = (nx.density(subgraph) - global_density) * 100
+            else:
+                density = 0.0
+                density_diff = 0.0
+            
+            # Largest connected component size
+            if node_count > 0:
+                components = list(nx.connected_components(subgraph))
+                lcc_size = len(max(components, key=len)) if components else 0
+            else:
+                lcc_size = 0
+            
+            print(f"{state:<12} {doc_count:<6} {node_count:<8} {edge_count:<8} {isolated_count:<10} {density:<10.2f} {lcc_size:<10} {density_diff:<12.2f}")
+        
+        # Global vs subgraph statistics comparison
+        print(f"\n📊 GLOBAL VS SUBGRAPH STATISTICS:")
+        print(f"   Global graph density: {global_density * 100:.2f}%")
+        
+        # Calculate average subgraph metrics
+        subgraph_densities = []
+        subgraph_isolated_counts = []
+        subgraph_component_counts = []
+        
+        for subgraph in self.state_subgraph_objects.values():
+            if subgraph.number_of_nodes() > 1:
+                subgraph_densities.append(nx.density(subgraph))
+            
+            isolated_count = len(list(nx.isolates(subgraph)))
+            subgraph_isolated_counts.append(isolated_count)
+            
+            components = list(nx.connected_components(subgraph))
+            subgraph_component_counts.append(len(components))
+        
+        if subgraph_densities:
+            avg_subgraph_density = np.mean(subgraph_densities) * 100
+            print(f"   Average subgraph density: {avg_subgraph_density:.2f}%")
+            print(f"   Density difference: {avg_subgraph_density - global_density * 100:.2f} percentage points")
+        
+        if subgraph_isolated_counts:
+            total_isolated = sum(subgraph_isolated_counts)
+            avg_isolated = np.mean(subgraph_isolated_counts)
+            print(f"   Total isolated nodes across subgraphs: {total_isolated}")
+            print(f"   Average isolated nodes per subgraph: {avg_isolated:.1f}")
+        
+        if subgraph_component_counts:
+            avg_components = np.mean(subgraph_component_counts)
+            print(f"   Average connected components per subgraph: {avg_components:.1f}")
+        
+        # Top states by different metrics
+        print(f"\n🏆 TOP STATES BY METRICS:")
+        
+        # By node count
+        states_by_nodes = sorted(self.state_subgraph_objects.items(), 
+                               key=lambda x: x[1].number_of_nodes(), reverse=True)[:5]
+        print(f"   Largest by nodes: {[(state, sg.number_of_nodes()) for state, sg in states_by_nodes]}")
+        
+        # By edge count
+        states_by_edges = sorted(self.state_subgraph_objects.items(), 
+                               key=lambda x: x[1].number_of_edges(), reverse=True)[:5]
+        print(f"   Largest by edges: {[(state, sg.number_of_edges()) for state, sg in states_by_edges]}")
+        
+        # By density (for states with >1 node)
+        states_by_density = [(state, nx.density(sg)) for state, sg in self.state_subgraph_objects.items() 
+                           if sg.number_of_nodes() > 1]
+        states_by_density.sort(key=lambda x: x[1], reverse=True)
+        print(f"   Highest density: {[(state, f'{density*100:.1f}%') for state, density in states_by_density[:5]]}")
+        
+        # Community preservation analysis
+        print(f"\n🏘️ COMMUNITY PRESERVATION ANALYSIS:")
+        global_communities = nx.get_node_attributes(self.global_graph_object, 'community')
+        
+        if global_communities:
+            for state, subgraph in list(self.state_subgraph_objects.items())[:5]:  # Show first 5 states
+                state_communities = set()
+                for node in subgraph.nodes():
+                    if node in global_communities:
+                        state_communities.add(global_communities[node])
+                
+                print(f"   {state}: {len(state_communities)} communities preserved from global graph")
+        
+        # Edge re-weighting analysis
+        print(f"\n⚖️ EDGE RE-WEIGHTING ANALYSIS:")
+        total_reweighted_edges = 0
+        total_preserved_edges = 0
+        
+        for state, subgraph in self.state_subgraph_objects.items():
+            reweighted = 0
+            preserved = 0
+            
+            for u, v, data in subgraph.edges(data=True):
+                if 'state_weight' in data and 'global_weight' in data:
+                    if data['state_weight'] != data['global_weight']:
+                        reweighted += 1
+                    else:
+                        preserved += 1
+            
+            total_reweighted_edges += reweighted
+            total_preserved_edges += preserved
+        
+        total_edges = total_reweighted_edges + total_preserved_edges
+        if total_edges > 0:
+            reweight_pct = (total_reweighted_edges / total_edges) * 100
+            print(f"   Total edges across subgraphs: {total_edges}")
+            print(f"   Re-weighted edges: {total_reweighted_edges} ({reweight_pct:.1f}%)")
+            print(f"   Preserved edges: {total_preserved_edges} ({100-reweight_pct:.1f}%)")
                 components = nx.number_connected_components(subgraph)
             else:
                 density = 0
@@ -1560,17 +1907,37 @@ class ResearchPipelineCLI:
         print(f"🌱 Random seed: {self.reproducibility_config['random_seed']}")
         print(f"🎯 Layout algorithm: {self.reproducibility_config['layout_algorithm']}")
         
-        # Visualization configuration for readable networks
+        # C. FIXED VISUALIZATION CONFIGURATION for semantic reference style
         self.viz_config = {
-            'edge_alpha': 0.15,  # Very low alpha for edges
-            'intra_community_edge_alpha': 0.3,  # Slightly higher for intra-community
-            'inter_community_edge_alpha': 0.05,  # Very low for inter-community
+            # Deterministic layout
+            'fixed_random_seed': self.reproducibility_config['random_seed'],
+            'cache_positions': True,
+            
+            # Visual encoding
+            'edge_alpha_light': 0.3,  # Intra-community edges
+            'edge_alpha_inter': 0.05,  # Inter-community edges  
+            'edge_color': 'lightgray',
+            'edge_weight_threshold': 2,  # Hide edges below this weight
+            
+            # Node shapes by role
             'core_node_shape': '^',  # Triangle for core nodes
             'periphery_node_shape': 'o',  # Circle for periphery nodes
-            'min_node_size': 100,
-            'max_node_size': 1000,
-            'label_importance_threshold': 0.7,  # Only label top 30% important nodes
-            'max_labels_per_community': 3,  # Max labels per community
+            
+            # Node size scaling by semantic importance (TF-IDF, not raw frequency)
+            'min_node_size': 50,
+            'max_node_size': 800,
+            'size_by_tfidf': True,
+            
+            # Selective labeling
+            'label_core_only': True,
+            'label_importance_threshold': 0.7,  # Top 30% important nodes
+            'max_labels_per_community': 3,
+            'never_label_structural': True,
+            
+            # High-resolution output
+            'output_dpi': 300,
+            'figure_size': (16, 12),
+            'export_format': 'PNG',
         }
         
         try:
@@ -1585,46 +1952,59 @@ class ResearchPipelineCLI:
             
             print("⏳ Generating readable thematic network visualizations...")
             
-            # Set matplotlib parameters for consistent output
-            plt.rcParams['figure.dpi'] = 150
-            plt.rcParams['savefig.dpi'] = 150
+            # Set matplotlib parameters for consistent, high-resolution output
+            plt.rcParams['figure.dpi'] = self.viz_config['output_dpi']
+            plt.rcParams['savefig.dpi'] = self.viz_config['output_dpi']
             plt.rcParams['font.size'] = 10
+            plt.rcParams['font.family'] = 'sans-serif'
             
-            # 1. GLOBAL GRAPH VISUALIZATION - READABLE THEMATIC NETWORK
+            # 1. GLOBAL GRAPH VISUALIZATION - SEMANTIC THEMATIC NETWORK
             if self.global_graph_object and self.global_layout_positions:
                 with tqdm(total=8, desc="🌐 Global thematic network", unit="step") as pbar:
                     pbar.set_description("🌐 Setting up figure")
-                    fig, ax = plt.subplots(1, 1, figsize=(16, 12))
+                    fig, ax = plt.subplots(1, 1, figsize=self.viz_config['figure_size'])
                     G = self.global_graph_object
+                    
+                    # Use cached positions from global graph (deterministic)
                     pos = self.global_layout_positions
                     pbar.update(1)
                     
                     pbar.set_description("🌐 Preparing node attributes")
-                    # Get node attributes
+                    # Get node attributes for visual encoding
                     communities = nx.get_node_attributes(G, 'community')
                     importance_scores = nx.get_node_attributes(G, 'importance')
                     node_roles = nx.get_node_attributes(G, 'role')
+                    tf_idf_scores = nx.get_node_attributes(G, 'tf_idf_score')
+                    is_structural = nx.get_node_attributes(G, 'is_structural')
                     
                     # Create distinct color map for communities
                     unique_communities = sorted(set(communities.values())) if communities else [0]
-                    colors = plt.cm.tab10(np.linspace(0, 1, len(unique_communities)))
+                    colors = plt.cm.Set3(np.linspace(0, 1, len(unique_communities)))
                     community_colors = {comm: colors[i % len(colors)] for i, comm in enumerate(unique_communities)}
                     pbar.update(1)
                     
                     pbar.set_description("🌐 Computing visual attributes")
-                    # Node visual attributes
+                    # Node visual attributes based on semantic importance
                     node_colors = [community_colors.get(communities.get(node, 0), 'lightblue') for node in G.nodes()]
                     
-                    # Node sizes based on importance
+                    # Node sizes based on TF-IDF scores (semantic importance), NOT raw frequency
                     node_sizes = []
                     node_shapes_core = []
                     node_shapes_periphery = []
                     
                     for node in G.nodes():
-                        importance = importance_scores.get(node, 0)
-                        size = self.viz_config['min_node_size'] + (self.viz_config['max_node_size'] - self.viz_config['min_node_size']) * importance
+                        # Use TF-IDF for size scaling if available, fallback to importance
+                        if self.viz_config['size_by_tfidf'] and tf_idf_scores:
+                            semantic_score = tf_idf_scores.get(node, 0)
+                            max_score = max(tf_idf_scores.values()) if tf_idf_scores.values() else 1
+                            normalized_score = semantic_score / max_score if max_score > 0 else 0
+                        else:
+                            normalized_score = importance_scores.get(node, 0)
+                        
+                        size = self.viz_config['min_node_size'] + (self.viz_config['max_node_size'] - self.viz_config['min_node_size']) * normalized_score
                         node_sizes.append(size)
                         
+                        # Separate nodes by role for different shapes
                         role = node_roles.get(node, 'periphery')
                         if role == 'core':
                             node_shapes_core.append(node)
@@ -1633,52 +2013,60 @@ class ResearchPipelineCLI:
                     
                     pbar.update(1)
                     
-                    pbar.set_description("🌐 Drawing edges with filtering")
-                    # 🔧 修复边绘制性能问题 - 预计算max_weight避免重复计算
+                    pbar.set_description("🌐 Drawing edges with community-aware filtering")
+                    # Edge rendering with community-aware alpha and weight threshold
                     edges_to_draw = []
                     edge_colors = []
-                    edge_widths = []
                     edge_alphas = []
-                    
-                    # 预先计算max_weight，避免在循环中重复计算（性能杀手！）
-                    edge_weights = [data['weight'] for _, _, data in G.edges(data=True)]
-                    max_weight = max(edge_weights) if edge_weights else 1
                     
                     for u, v, data in G.edges(data=True):
                         weight = data['weight']
+                        
+                        # Apply weight threshold to avoid hairball effect
+                        if weight < self.viz_config['edge_weight_threshold']:
+                            continue
+                        
                         u_community = communities.get(u, 0)
                         v_community = communities.get(v, 0)
                         
-                        # Determine edge properties
+                        # Community-aware edge rendering
                         if u_community == v_community:
-                            alpha = self.viz_config['intra_community_edge_alpha']
-                            color = community_colors.get(u_community, 'gray')
+                            # Intra-community edges: higher alpha
+                            alpha = self.viz_config['edge_alpha_light']
                         else:
-                            alpha = self.viz_config['inter_community_edge_alpha']
-                            color = 'gray'
-                        
-                        # Edge width based on pre-calculated max_weight
-                        width = 0.5 + 2.0 * (weight / max_weight)
+                            # Inter-community edges: lower alpha
+                            alpha = self.viz_config['edge_alpha_inter']
                         
                         edges_to_draw.append((u, v))
-                        edge_colors.append(color)
-                        edge_widths.append(width)
+                        edge_colors.append(self.viz_config['edge_color'])
                         edge_alphas.append(alpha)
                     
-                    # 批量绘制边避免卡住 - 限制边数并简化绘制
+                    # Draw edges in batches to avoid performance issues
                     if edges_to_draw:
-                        # 只绘制重要的边，避免视觉混乱
-                        important_edges = []
+                        # Separate intra and inter community edges for different rendering
+                        intra_edges = []
+                        inter_edges = []
+                        
                         for i, (u, v) in enumerate(edges_to_draw):
-                            if edge_widths[i] >= 1.0:  # 只绘制权重较高的边
-                                important_edges.append((u, v))
+                            u_community = communities.get(u, 0)
+                            v_community = communities.get(v, 0)
+                            
+                            if u_community == v_community:
+                                intra_edges.append((u, v))
+                            else:
+                                inter_edges.append((u, v))
                         
-                        # 限制边数避免卡住
-                        limited_edges = important_edges[:100] if len(important_edges) > 100 else important_edges
+                        # Draw inter-community edges first (lower layer)
+                        if inter_edges:
+                            nx.draw_networkx_edges(G, pos, edgelist=inter_edges,
+                                                 width=0.5, alpha=self.viz_config['edge_alpha_inter'], 
+                                                 edge_color=self.viz_config['edge_color'], ax=ax)
                         
-                        if limited_edges:
-                            nx.draw_networkx_edges(G, pos, edgelist=limited_edges,
-                                                 width=1.0, alpha=0.3, edge_color='gray', ax=ax)
+                        # Draw intra-community edges on top
+                        if intra_edges:
+                            nx.draw_networkx_edges(G, pos, edgelist=intra_edges,
+                                                 width=1.0, alpha=self.viz_config['edge_alpha_light'], 
+                                                 edge_color=self.viz_config['edge_color'], ax=ax)
                     pbar.update(1)
                     
                     pbar.set_description("🌐 Drawing nodes by role")
@@ -1700,26 +2088,40 @@ class ResearchPipelineCLI:
                                              alpha=0.8, edgecolors='gray', linewidths=0.5, ax=ax)
                     pbar.update(1)
                     
-                    pbar.set_description("🌐 Adding selective labels")
-                    # SELECTIVE LABELING - Only label important nodes
+                    pbar.set_description("🌐 Adding selective semantic labels")
+                    # SELECTIVE LABELING - Only label core nodes, never structural tokens
                     labels_to_draw = {}
-                    importance_threshold = np.percentile(list(importance_scores.values()), 
-                                                       self.viz_config['label_importance_threshold'] * 100)
+                    
+                    if self.viz_config['label_core_only']:
+                        # Only label core nodes
+                        candidate_nodes = node_shapes_core
+                    else:
+                        # Label all nodes above importance threshold
+                        importance_threshold = np.percentile(list(importance_scores.values()), 
+                                                           self.viz_config['label_importance_threshold'] * 100)
+                        candidate_nodes = [node for node in G.nodes() 
+                                         if importance_scores.get(node, 0) >= importance_threshold]
+                    
+                    # Never label structural tokens
+                    if self.viz_config['never_label_structural']:
+                        candidate_nodes = [node for node in candidate_nodes 
+                                         if not is_structural.get(node, False)]
                     
                     # Group nodes by community for balanced labeling
                     community_nodes = defaultdict(list)
-                    for node in G.nodes():
+                    for node in candidate_nodes:
                         community = communities.get(node, 0)
                         importance = importance_scores.get(node, 0)
-                        if importance >= importance_threshold:
-                            community_nodes[community].append((node, importance))
+                        community_nodes[community].append((node, importance))
                     
-                    # Select top nodes per community
+                    # Select top nodes per community (max 3 per community)
                     for community, nodes in community_nodes.items():
                         # Sort by importance and take top N
                         top_nodes = sorted(nodes, key=lambda x: x[1], reverse=True)[:self.viz_config['max_labels_per_community']]
                         for node, _ in top_nodes:
-                            labels_to_draw[node] = node
+                            # Truncate long labels for readability
+                            label = node[:15] + "..." if len(node) > 15 else node
+                            labels_to_draw[node] = label
                     
                     if labels_to_draw:
                         nx.draw_networkx_labels(G, pos, labels_to_draw, 
@@ -1727,26 +2129,33 @@ class ResearchPipelineCLI:
                                               font_color='black', ax=ax)
                     pbar.update(1)
                     
-                    pbar.set_description("🌐 Adding legends and annotations")
-                    # Enhanced title and annotations
-                    ax.set_title(f'Global Thematic Co-occurrence Network\n'
-                               f'{G.number_of_nodes()} nodes, {G.number_of_edges()} edges, '
-                               f'{len(unique_communities)} communities\n'
-                               f'Seed: {seed} | Density: {nx.density(G)*100:.2f}%', 
+                    pbar.set_description("🌐 Adding enhanced legends")
+                    # Enhanced title with semantic filtering info
+                    structural_removed = len(self.phrase_data.get('filtered_phrases', {})) - G.number_of_nodes()
+                    ax.set_title(f'Global Semantic Co-occurrence Network\n'
+                               f'{G.number_of_nodes()} nodes ({structural_removed} structural tokens removed), '
+                               f'{G.number_of_edges()} edges, {len(unique_communities)} communities\n'
+                               f'Seed: {seed} | Density: {nx.density(G)*100:.2f}% | TF-IDF weighted', 
                                fontsize=14, fontweight='bold', pad=20)
                     
-                    # Community legend
+                    # Enhanced community legend
                     legend_elements = []
-                    for comm in sorted(unique_communities):
+                    for comm in sorted(unique_communities)[:8]:  # Show first 8 communities
                         color = community_colors[comm]
                         legend_elements.append(patches.Patch(color=color, label=f'Community {comm}'))
                     
-                    # Role legend
+                    if len(unique_communities) > 8:
+                        legend_elements.append(patches.Patch(color='lightgray', label=f'... +{len(unique_communities)-8} more'))
+                    
+                    # Role and semantic legend
                     legend_elements.append(patches.Patch(color='white', label=''))  # Spacer
                     legend_elements.append(plt.Line2D([0], [0], marker='^', color='w', 
-                                                    markerfacecolor='gray', markersize=10, label='Core nodes'))
+                                                    markerfacecolor='gray', markersize=10, label='Core nodes (triangles)'))
                     legend_elements.append(plt.Line2D([0], [0], marker='o', color='w', 
-                                                    markerfacecolor='gray', markersize=8, label='Periphery nodes'))
+                                                    markerfacecolor='gray', markersize=8, label='Periphery nodes (circles)'))
+                    legend_elements.append(patches.Patch(color='white', label=''))  # Spacer
+                    legend_elements.append(patches.Patch(color='lightgray', label='Node size: TF-IDF score'))
+                    legend_elements.append(patches.Patch(color='lightgray', label='Edge alpha: Community relationship'))
                     
                     ax.legend(handles=legend_elements, loc='upper left', bbox_to_anchor=(1.02, 1), 
                             frameon=True, fancybox=True, shadow=True)
@@ -1755,11 +2164,20 @@ class ResearchPipelineCLI:
                     plt.tight_layout()
                     pbar.update(1)
                     
-                    pbar.set_description("🌐 Saving visualization")
+                    pbar.set_description("🌐 Saving high-resolution visualization")
                     global_viz_name = f"global_thematic_network_seed{seed}_{timestamp}.png"
                     global_viz_path = os.path.join(viz_dir, global_viz_name)
-                    plt.savefig(global_viz_path, bbox_inches='tight', facecolor='white', dpi=300)
+                    
+                    # Always export physical image file (PNG) with high resolution
+                    plt.savefig(global_viz_path, bbox_inches='tight', facecolor='white', 
+                              dpi=self.viz_config['output_dpi'], format=self.viz_config['export_format'])
                     plt.close()
+                    
+                    # Print absolute output image path after generation
+                    print(f"      ✅ Saved: {os.path.basename(global_viz_path)}")
+                    print(f"      📁 Full path: {os.path.abspath(global_viz_path)}")
+                    
+                    self.visualization_paths['global'] = os.path.abspath(global_viz_path)
                     
                     self.visualization_paths['global_graph'] = global_viz_path
                     pbar.update(1)
