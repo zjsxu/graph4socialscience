@@ -48,6 +48,7 @@ except ImportError:
 from ..core.data_models import TOCDocument, ProcessedDocument, Window
 from ..core.config import Config
 from ..core.error_handler import ErrorHandler
+from .linguistic_phrase_validator import LinguisticPhraseValidator, ValidatedPhrase
 
 
 @dataclass
@@ -289,13 +290,21 @@ class EnhancedLanguageProcessor:
 
 class PhraseCandidateExtractor:
     """
-    Step 2: Phrase/Keyphrase Candidate Extraction using spaCy Matcher
+    Step 2: Phrase/Keyphrase Candidate Extraction using STRICT linguistic validation
+    
+    MANDATORY IMPLEMENTATION:
+    - POS-based phrase gating (head must be NOUN/PROPN)
+    - Dependency-based phrase construction (noun chunks + dependency merges)
+    - Explicit rejection of PRON, ADV, VERB phrases
     """
     
     def __init__(self, config: Dict[str, Any], language_processor: EnhancedLanguageProcessor):
         self.config = config
         self.language_processor = language_processor
         self.logger = logging.getLogger(__name__)
+        
+        # Initialize STRICT linguistic validator
+        self.linguistic_validator = LinguisticPhraseValidator(config)
         
         # Configuration
         self.min_phrase_length = config.get('min_phrase_length', 2)
@@ -304,7 +313,12 @@ class PhraseCandidateExtractor:
     def extract_phrase_candidates(self, preprocessing_result: Dict[str, Any], 
                                 segment_id: str, state: str, language: str) -> List[PhraseCandidate]:
         """
-        Extract phrase candidates using spaCy Matcher rules
+        Extract phrase candidates using STRICT linguistic validation
+        
+        ENFORCES:
+        1. POS-based gating: head must be NOUN/PROPN
+        2. Dependency-based construction: only valid linguistic structures
+        3. Explicit rejection of pronouns, adverbs, verbs
         
         Args:
             preprocessing_result: Result from linguistic preprocessing
@@ -313,228 +327,62 @@ class PhraseCandidateExtractor:
             language: Language code
             
         Returns:
-            List of phrase candidates
+            List of linguistically validated phrase candidates
         """
-        spacy_doc = preprocessing_result.get('spacy_doc')
+        text = preprocessing_result.get('cleaned_text', '')
         
-        if spacy_doc is not None and SPACY_AVAILABLE:
-            return self._extract_with_spacy_matcher(spacy_doc, segment_id, state, language)
-        else:
-            return self._extract_with_fallback(preprocessing_result, segment_id, state, language)
-    
-    def _extract_with_spacy_matcher(self, doc: Union[Doc, Any], segment_id: str, state: str, language: str) -> List[PhraseCandidate]:
-        """Extract phrases using spaCy Matcher"""
+        # Use STRICT linguistic validator
+        validated_phrases = self.linguistic_validator.validate_and_extract_phrases(
+            text, segment_id, state, language
+        )
+        
+        # Convert ValidatedPhrase objects to PhraseCandidate objects
         candidates = []
+        for validated_phrase in validated_phrases:
+            if validated_phrase.validation_passed:
+                candidate = PhraseCandidate(
+                    text=validated_phrase.text,
+                    tokens=validated_phrase.tokens,
+                    pos_tags=validated_phrase.pos_tags,
+                    dependency_relations=validated_phrase.dependency_relations,
+                    segment_id=validated_phrase.segment_id,
+                    state=validated_phrase.state
+                )
+                candidates.append(candidate)
         
-        # Choose appropriate matcher
-        matcher = (self.language_processor.en_matcher if language == 'en' 
-                  else self.language_processor.zh_matcher)
+        # Log validation statistics
+        total_extracted = len(validated_phrases)
+        valid_count = len(candidates)
+        rejected_count = total_extracted - valid_count
         
-        if matcher is None:
-            return self._extract_with_fallback_from_doc(doc, segment_id, state, language)
-        
-        try:
-            # Find matches
-            matches = matcher(doc)
-            
-            for match_id, start, end in matches:
-                span = doc[start:end]
-                phrase_text = span.text.strip()
-                
-                # Filter by length
-                if len(phrase_text) < self.min_phrase_length:
-                    continue
-                
-                # Extract tokens and linguistic features
-                tokens = [token.text for token in span]
-                pos_tags = [token.pos_ for token in span]
-                dep_relations = [token.dep_ for token in span]
-                
-                # Additional filtering
-                if self._should_keep_phrase(phrase_text, tokens, pos_tags, language):
-                    candidate = PhraseCandidate(
-                        text=phrase_text,
-                        tokens=tokens,
-                        pos_tags=pos_tags,
-                        dependency_relations=dep_relations,
-                        segment_id=segment_id,
-                        state=state
-                    )
-                    candidates.append(candidate)
-            
-            # Also extract dependency-based phrases
-            dep_candidates = self._extract_dependency_phrases(doc, segment_id, state, language)
-            candidates.extend(dep_candidates)
-            
-        except Exception as e:
-            self.logger.warning(f"spaCy matcher extraction failed: {e}")
-            return self._extract_with_fallback_from_doc(doc, segment_id, state, language)
+        if total_extracted > 0:
+            self.logger.info(f"Linguistic validation: {valid_count}/{total_extracted} phrases passed "
+                           f"({valid_count/total_extracted*100:.1f}%), {rejected_count} rejected")
         
         return candidates
     
-    def _extract_dependency_phrases(self, doc: Union[Doc, Any], segment_id: str, state: str, language: str) -> List[PhraseCandidate]:
-        """Extract phrases based on dependency relations (amod, compound)"""
-        candidates = []
+    def get_validation_statistics(self, all_candidates: List[PhraseCandidate]) -> Dict[str, Any]:
+        """Get statistics about linguistic validation"""
+        if not hasattr(self, 'linguistic_validator'):
+            return {}
         
-        for token in doc:
-            # Look for amod (adjectival modifier) relations
-            if token.dep_ == "amod" and token.head.pos_ in ["NOUN", "PROPN"]:
-                phrase_text = f"{token.text} {token.head.text}"
-                if self._should_keep_phrase(phrase_text, [token.text, token.head.text], 
-                                          [token.pos_, token.head.pos_], language):
-                    candidate = PhraseCandidate(
-                        text=phrase_text,
-                        tokens=[token.text, token.head.text],
-                        pos_tags=[token.pos_, token.head.pos_],
-                        dependency_relations=[token.dep_, token.head.dep_],
-                        segment_id=segment_id,
-                        state=state
-                    )
-                    candidates.append(candidate)
-            
-            # Look for compound relations
-            elif token.dep_ == "compound" and token.head.pos_ in ["NOUN", "PROPN"]:
-                phrase_text = f"{token.text} {token.head.text}"
-                if self._should_keep_phrase(phrase_text, [token.text, token.head.text],
-                                          [token.pos_, token.head.pos_], language):
-                    candidate = PhraseCandidate(
-                        text=phrase_text,
-                        tokens=[token.text, token.head.text],
-                        pos_tags=[token.pos_, token.head.pos_],
-                        dependency_relations=[token.dep_, token.head.dep_],
-                        segment_id=segment_id,
-                        state=state
-                    )
-                    candidates.append(candidate)
+        # Convert candidates back to ValidatedPhrase format for statistics
+        validated_phrases = []
+        for candidate in all_candidates:
+            validated_phrase = ValidatedPhrase(
+                text=candidate.text,
+                tokens=candidate.tokens,
+                pos_tags=candidate.pos_tags,
+                head_token=candidate.tokens[-1] if candidate.tokens else '',
+                head_pos=candidate.pos_tags[-1] if candidate.pos_tags else '',
+                dependency_relations=candidate.dependency_relations,
+                segment_id=candidate.segment_id,
+                state=candidate.state,
+                validation_passed=True  # These are already validated
+            )
+            validated_phrases.append(validated_phrase)
         
-        return candidates
-    
-    def _extract_with_fallback(self, preprocessing_result: Dict[str, Any], 
-                             segment_id: str, state: str, language: str) -> List[PhraseCandidate]:
-        """Fallback phrase extraction without spaCy"""
-        candidates = []
-        tokens = preprocessing_result.get('tokens', [])
-        pos_tags = preprocessing_result.get('pos_tags', [])
-        
-        if len(tokens) < 2:
-            return candidates
-        
-        # Generate n-grams (2 to max_phrase_length)
-        for n in range(2, min(self.max_phrase_length + 1, len(tokens) + 1)):
-            for i in range(len(tokens) - n + 1):
-                phrase_tokens = tokens[i:i+n]
-                
-                # Skip if any token is too short or all punctuation
-                if any(len(token) < 2 and not token.isalnum() for token in phrase_tokens):
-                    continue
-                
-                phrase_text = ' '.join(phrase_tokens) if language == 'en' else ''.join(phrase_tokens)
-                phrase_pos = pos_tags[i:i+n] if i+n <= len(pos_tags) else ['UNKNOWN'] * n
-                
-                if self._should_keep_phrase(phrase_text, phrase_tokens, phrase_pos, language):
-                    candidate = PhraseCandidate(
-                        text=phrase_text,
-                        tokens=phrase_tokens,
-                        pos_tags=phrase_pos,
-                        dependency_relations=['UNKNOWN'] * n,
-                        segment_id=segment_id,
-                        state=state
-                    )
-                    candidates.append(candidate)
-        
-        return candidates
-    
-    def _extract_with_fallback_from_doc(self, doc: Union[Doc, Any], segment_id: str, state: str, language: str) -> List[PhraseCandidate]:
-        """Fallback extraction from spaCy doc when matcher fails"""
-        candidates = []
-        tokens = [token.text for token in doc if not token.is_space]
-        pos_tags = [token.pos_ for token in doc if not token.is_space]
-        
-        # Generate bigrams and trigrams
-        for n in range(2, min(4, len(tokens) + 1)):
-            for i in range(len(tokens) - n + 1):
-                phrase_tokens = tokens[i:i+n]
-                phrase_text = ' '.join(phrase_tokens) if language == 'en' else ''.join(phrase_tokens)
-                phrase_pos = pos_tags[i:i+n]
-                
-                if self._should_keep_phrase(phrase_text, phrase_tokens, phrase_pos, language):
-                    candidate = PhraseCandidate(
-                        text=phrase_text,
-                        tokens=phrase_tokens,
-                        pos_tags=phrase_pos,
-                        dependency_relations=['UNKNOWN'] * n,
-                        segment_id=segment_id,
-                        state=state
-                    )
-                    candidates.append(candidate)
-        
-        return candidates
-    
-    def _should_keep_phrase(self, phrase_text: str, tokens: List[str], pos_tags: List[str], language: str) -> bool:
-        """
-        Determine if a phrase candidate should be kept
-        
-        Filtering rules:
-        - No single stopwords
-        - No pure function phrases
-        - No single punctuation or numeric tokens
-        - Must be linguistically meaningful
-        """
-        # Basic length check
-        if len(tokens) < 2:
-            return False
-        
-        # Check for pure punctuation or numbers
-        if all(re.match(r'^[\W\d]+$', token) for token in tokens):
-            return False
-        
-        # Language-specific filtering
-        if language == 'en':
-            return self._should_keep_english_phrase(phrase_text, tokens, pos_tags)
-        else:
-            return self._should_keep_chinese_phrase(phrase_text, tokens, pos_tags)
-    
-    def _should_keep_english_phrase(self, phrase_text: str, tokens: List[str], pos_tags: List[str]) -> bool:
-        """English-specific phrase filtering"""
-        # Basic length and content checks
-        if len(tokens) < 2:
-            return False
-        
-        # Skip if all tokens are too short (except common short words)
-        short_ok = {'is', 'of', 'to', 'in', 'on', 'at', 'by', 'or', 'it', 'we', 'he', 'me'}
-        if all(len(token) < 2 and token.lower() not in short_ok for token in tokens):
-            return False
-        
-        # Avoid phrases that are entirely function words
-        function_words = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by'}
-        if all(token.lower() in function_words for token in tokens):
-            return False
-        
-        # Avoid phrases starting and ending with function words for 2-word phrases
-        if len(tokens) == 2 and tokens[0].lower() in function_words and tokens[1].lower() in function_words:
-            return False
-        
-        # Must contain at least one substantial word (length >= 3 or known good short words)
-        substantial_words = {'is', 'of', 'to', 'in', 'on', 'at', 'by', 'or', 'it', 'we', 'he', 'me', 'my', 'us'}
-        has_substantial = any(len(token) >= 3 or token.lower() in substantial_words for token in tokens)
-        if not has_substantial:
-            return False
-        
-        return True
-    
-    def _should_keep_chinese_phrase(self, phrase_text: str, tokens: List[str], pos_tags: List[str]) -> bool:
-        """Chinese-specific phrase filtering"""
-        # Must contain at least some Chinese characters
-        chinese_chars = len(re.findall(r'[\u4e00-\u9fff]', phrase_text))
-        if chinese_chars < len(phrase_text) * 0.5:
-            return False
-        
-        # Avoid pure function words
-        function_words = {'的', '了', '在', '是', '有', '和', '就', '不', '都', '一', '也', '很', '到', '说', '要', '去', '会', '着'}
-        if all(token in function_words for token in tokens):
-            return False
-        
-        return True
+        return self.linguistic_validator.get_validation_statistics(validated_phrases)
 
 
 class StaticStopwordFilter:
@@ -927,9 +775,11 @@ class EnhancedTextProcessor:
             result['language'] = language
             preprocessing_results.append(result)
         
-        # Step 2: Phrase Candidate Extraction
-        self.logger.info("Step 2: Phrase Candidate Extraction")
+        # Step 2: Phrase Candidate Extraction with STRICT linguistic validation
+        self.logger.info("Step 2: Phrase Candidate Extraction (STRICT linguistic validation)")
         all_candidates = []
+        validation_stats = {'total_extracted': 0, 'total_validated': 0, 'rejection_reasons': {}}
+        
         for result in preprocessing_results:
             doc = result['document']
             language = result['language']
@@ -938,7 +788,20 @@ class EnhancedTextProcessor:
             )
             all_candidates.extend(candidates)
         
-        self.logger.info(f"Extracted {len(all_candidates)} phrase candidates")
+        # Get validation statistics
+        if hasattr(self.phrase_extractor, 'get_validation_statistics'):
+            validation_stats = self.phrase_extractor.get_validation_statistics(all_candidates)
+        
+        self.logger.info(f"STRICT validation: {len(all_candidates)} linguistically valid phrases extracted")
+        
+        # Log validation details
+        if validation_stats:
+            self.logger.info(f"Validation rate: {validation_stats.get('validation_rate', 0)*100:.1f}%")
+            rejection_reasons = validation_stats.get('rejection_reasons', {})
+            if rejection_reasons:
+                self.logger.info("Top rejection reasons:")
+                for reason, count in sorted(rejection_reasons.items(), key=lambda x: x[1], reverse=True)[:5]:
+                    self.logger.info(f"  - {reason}: {count} phrases")
         
         # Step 3: Static Stopword Filtering
         self.logger.info("Step 3: Static Stopword Filtering")
@@ -969,7 +832,7 @@ class EnhancedTextProcessor:
             filtered_candidates, all_static_stopwords, dynamic_stopwords, 'mixed'
         )
         
-        # Compile results
+        # Compile results with STRICT linguistic validation info
         results = {
             'preprocessing_results': preprocessing_results,
             'phrase_candidates': all_candidates,
@@ -983,13 +846,17 @@ class EnhancedTextProcessor:
             },
             'final_phrases': final_phrases,
             'phrase_to_segments': phrase_mappings,
+            'linguistic_validation_stats': validation_stats,  # NEW: Validation statistics
             'processing_metadata': {
                 'total_documents': len(documents),
                 'total_candidates': len(all_candidates),
                 'after_static_filtering': len(filtered_candidates),
                 'dynamic_stopwords_count': len(dynamic_stopwords),
                 'final_phrases_count': len(final_phrases),
-                'languages_detected': list(set(r['language'] for r in preprocessing_results))
+                'languages_detected': list(set(r['language'] for r in preprocessing_results)),
+                'linguistic_validation_enabled': True,  # NEW: Flag indicating strict validation
+                'pos_gating_enforced': True,  # NEW: POS-based gating enforced
+                'dependency_construction_used': True  # NEW: Dependency-based construction used
             }
         }
         
@@ -1025,11 +892,11 @@ class EnhancedTextProcessor:
         with open(phrases_path, 'w', encoding='utf-8') as f:
             json.dump(phrases_data, f, ensure_ascii=False, indent=2)
         
-        # Save processing summary
+        # Save processing summary with linguistic validation info
         summary_path = output_path / "processing_summary.txt"
         with open(summary_path, 'w', encoding='utf-8') as f:
-            f.write("Enhanced Text Processing Summary\n")
-            f.write("=" * 40 + "\n\n")
+            f.write("Enhanced Text Processing Summary (STRICT Linguistic Validation)\n")
+            f.write("=" * 60 + "\n\n")
             
             metadata = results['processing_metadata']
             f.write(f"Total documents processed: {metadata['total_documents']}\n")
@@ -1039,9 +906,64 @@ class EnhancedTextProcessor:
             f.write(f"Dynamic stopwords identified: {metadata['dynamic_stopwords_count']}\n")
             f.write(f"Final phrases: {metadata['final_phrases_count']}\n\n")
             
+            # Linguistic validation info
+            f.write("LINGUISTIC VALIDATION:\n")
+            f.write("-" * 25 + "\n")
+            f.write(f"POS-based gating enforced: {metadata.get('pos_gating_enforced', False)}\n")
+            f.write(f"Dependency-based construction: {metadata.get('dependency_construction_used', False)}\n")
+            
+            validation_stats = results.get('linguistic_validation_stats', {})
+            if validation_stats:
+                f.write(f"Validation rate: {validation_stats.get('validation_rate', 0)*100:.1f}%\n")
+                f.write(f"Valid phrases: {validation_stats.get('valid_phrases', 0)}\n")
+                f.write(f"Invalid phrases: {validation_stats.get('invalid_phrases', 0)}\n\n")
+                
+                # Top rejection reasons
+                rejection_reasons = validation_stats.get('rejection_reasons', {})
+                if rejection_reasons:
+                    f.write("Top rejection reasons:\n")
+                    for reason, count in sorted(rejection_reasons.items(), key=lambda x: x[1], reverse=True)[:10]:
+                        f.write(f"  - {reason}: {count}\n")
+                    f.write("\n")
+                
+                # Valid POS patterns
+                pos_patterns = validation_stats.get('valid_pos_patterns', {})
+                if pos_patterns:
+                    f.write("Valid POS patterns (top 10):\n")
+                    for pattern, count in sorted(pos_patterns.items(), key=lambda x: x[1], reverse=True)[:10]:
+                        f.write(f"  - {pattern}: {count}\n")
+                    f.write("\n")
+            
             f.write("Dynamic Stopwords:\n")
             f.write("-" * 20 + "\n")
             for stopword in sorted(results['dynamic_stopwords']):
                 f.write(f"  {stopword}\n")
+        
+        # Save linguistic validation report
+        validation_path = output_path / "linguistic_validation_report.json"
+        validation_data = {
+            'validation_statistics': results.get('linguistic_validation_stats', {}),
+            'pos_gating_rules': {
+                'valid_head_pos': ['NOUN', 'PROPN'],
+                'invalid_head_pos': ['PRON', 'ADV', 'VERB', 'AUX'],
+                'single_token_allowed_pos': ['NOUN', 'PROPN']
+            },
+            'dependency_construction_rules': {
+                'valid_dependencies': ['compound', 'amod', 'nmod', 'nummod'],
+                'invalid_dependencies': ['advmod', 'nsubj', 'dobj', 'prep'],
+                'strategies_used': ['noun_chunks', 'dependency_merges', 'single_nouns']
+            },
+            'validation_examples': {
+                'must_never_appear': [
+                    'someone', 'what you', 'quick', 'paying', 'frequently', 'currently'
+                ],
+                'must_be_allowed': [
+                    'student discipline', 'data privacy', 'digital storage', 'disciplinary action'
+                ]
+            }
+        }
+        
+        with open(validation_path, 'w', encoding='utf-8') as f:
+            json.dump(validation_data, f, ensure_ascii=False, indent=2)
         
         self.logger.info(f"Results saved to {output_dir}")
