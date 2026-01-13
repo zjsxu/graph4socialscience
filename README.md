@@ -261,3 +261,41 @@ MIT License
 **🏆 OpenRank Contest 2024 | Graph4SocialScience Team**
 
 </div>
+
+## 🔧 Portable Setup
+
+This project is now fully portable and removes all hardcoded paths:
+
+### Quick Start
+```bash
+# Clone the repository
+git clone <repository-url>
+cd graph4socialscience
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run the main interface
+python complete_usage_guide.py
+```
+
+### Directory Structure
+```
+graph4socialscience/
+├── test_input/          # Default input directory
+├── output/              # Default output directory  
+├── sample_research_data/ # Sample data for testing
+├── complete_usage_guide.py # Main interface
+├── portable_config.py   # Portable configuration
+└── tqdm_utils.py       # Progress bar utilities
+```
+
+### Configuration
+- All paths are now relative to the project directory
+- Use `portable_config.py` for path management
+- Set custom paths through the interface (option 1.1 and 1.2)
+
+### Progress Indicators
+- All long-running operations now show progress bars
+- Consistent styling across the entire project
+- Better user feedback and time estimation

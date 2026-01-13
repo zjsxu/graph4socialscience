@@ -5,9 +5,8 @@
 1. 4.1步骤的spring layout进度条只显示0%和100%
 2. 6.1步骤的可视化生成卡住不动
 
-数据来源：/Users/zhangjingsen/Desktop/python/graph4socialscience/toc_doc
-输出目录：/Users/zhangjingsen/Desktop/python/graph4socialscience/hajimi/haniumoa/
-"""
+数据来源：test_input
+输出目录：test_output"""
 
 import os
 import sys
@@ -35,8 +34,8 @@ class VisualizationTester:
     """可视化功能测试和修复类"""
     
     def __init__(self):
-        self.input_directory = "/Users/zhangjingsen/Desktop/python/graph4socialscience/toc_doc"
-        self.output_dir = "/Users/zhangjingsen/Desktop/python/graph4socialscience/hajimi/haniumoa"
+        self.input_directory = "test_input"
+        self.output_dir = "test_output"
         
         # 确保输出目录存在
         os.makedirs(self.output_dir, exist_ok=True)

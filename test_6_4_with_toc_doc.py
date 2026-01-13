@@ -18,8 +18,8 @@ def test_6_4_with_real_data():
     print("=" * 60)
     
     # 设置路径
-    input_dir = "/Users/zhangjingsen/Desktop/python/graph4socialscience/toc_doc"
-    output_dir = "/Users/zhangjingsen/Desktop/python/graph4socialscience/hajimi/haniumoa"
+    input_dir = "test_input"
+    output_dir = "test_output"
     
     # 检查输入目录是否存在
     if not os.path.exists(input_dir):

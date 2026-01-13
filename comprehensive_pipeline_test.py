@@ -26,8 +26,8 @@ def run_complete_pipeline_test():
     app = ResearchPipelineCLI()
     
     # Set real data paths
-    input_dir = '/Users/zhangjingsen/Desktop/python/graph4socialscience/toc_doc'
-    output_dir = '/Users/zhangjingsen/Desktop/python/graph4socialscience/2nd_output_dir'
+    input_dir = 'test_input'
+    output_dir = 'test_output'
     
     app.input_directory = input_dir
     app.output_dir = output_dir

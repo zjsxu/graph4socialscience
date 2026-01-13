@@ -17,8 +17,8 @@ def test_semantic_corrections():
     print()
     
     # 设置测试参数
-    input_dir = "/Users/zhangjingsen/Desktop/python/graph4socialscience/toc_doc"
-    output_dir = "/Users/zhangjingsen/Desktop/python/graph4socialscience/semantic_test_output"
+    input_dir = "test_input"
+    output_dir = "test_output"
     
     if not os.path.exists(input_dir):
         print(f"❌ 输入目录不存在: {input_dir}")

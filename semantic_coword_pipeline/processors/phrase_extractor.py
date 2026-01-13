@@ -8,6 +8,7 @@
 import re
 import math
 import logging
+from tqdm import tqdm
 from collections import Counter, defaultdict
 from typing import Dict, List, Any, Optional, Tuple, Set
 from dataclasses import dataclass
@@ -672,7 +673,7 @@ class PhraseExtractor:
             all_tokens = []
             all_bigrams = []
             
-            for doc in processed_docs:
+            for doc in tqdm(processed_docs, desc="📄 Processing documents", unit="doc"):
                 all_tokens.extend(doc.tokens)
                 
                 # 生成bigrams用于统计
@@ -723,7 +724,7 @@ class PhraseExtractor:
         total_phrases = 0
         phrase_length_dist = Counter()
         
-        for doc in processed_docs:
+        for doc in tqdm(processed_docs, desc="📄 Processing documents", unit="doc"):
             lang = doc.original_doc.language or 'unknown'
             language_counts[lang] = language_counts.get(lang, 0) + 1
             
@@ -731,7 +732,7 @@ class PhraseExtractor:
             total_phrases += len(phrases)
             
             # 统计短语长度分布
-            for phrase in phrases:
+            for phrase in tqdm(phrases, desc="🔍 Processing phrases", unit="phrase"):
                 length = len(phrase.split()) if doc.original_doc.language == 'english' else len(phrase)
                 phrase_length_dist[length] += 1
         

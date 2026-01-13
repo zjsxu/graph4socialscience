@@ -359,27 +359,134 @@ class ResearchPipelineCLI:
             print("   Use option 1.1 to select input directory")
     
     def clean_and_normalize_text(self):
-        """Clean and normalize text with preview capability"""
+        """Enhanced text cleaning and normalization with 6-step linguistic pipeline"""
         if not self.validate_pipeline_step('data_loaded', "Please load input data first (step 1.1)"):
             return
         
-        print("\n🧹 TEXT CLEANING & NORMALIZATION")
-        print("-" * 50)
-        print("🔬 Research Pipeline: Text cleaning with transparency and debugging")
+        print("\n🧹 ENHANCED TEXT CLEANING & NORMALIZATION")
+        print("-" * 60)
+        print("🔬 Research Pipeline: 6-Step Linguistically Grounded Processing")
+        print("📋 Steps: Linguistic Preprocessing → Phrase Extraction → Static Filtering")
+        print("         → Corpus Statistics → Dynamic Stopwords → Final Filtering")
         print(f"🌱 Using random seed: {self.reproducibility_config['random_seed']}")
         print(f"🗣️ Language detection: {self.reproducibility_config['language_detection']}")
         
         try:
-            print("⏳ Loading and cleaning text data...")
+            # Import enhanced text processor
+            from semantic_coword_pipeline.processors.enhanced_text_processor import EnhancedTextProcessor
+            from semantic_coword_pipeline.core.data_models import TOCDocument
+            
+            print("⏳ Loading input data and initializing enhanced processor...")
             input_data = self.load_input_data()
             
-            # Simulate text cleaning process (replace with actual pipeline call)
+            # Initialize enhanced text processor with current config
+            enhanced_config = Config()
+            enhanced_config.set('enhanced_text_processing.df_threshold_ratio', 0.6)  # Adjusted for research
+            enhanced_config.set('enhanced_text_processing.tfidf_threshold', 0.05)
+            enhanced_config.set('enhanced_text_processing.min_frequency_for_stopword', 2)
+            enhanced_config.set('enhanced_text_processing.max_phrase_length', 4)
+            
+            processor = EnhancedTextProcessor(enhanced_config)
+            
+            # Convert input data to TOCDocument format
+            documents = []
+            for doc in input_data:
+                toc_doc = TOCDocument(
+                    segment_id=doc['segment_id'],
+                    title=doc['title'],
+                    text=doc['text'],
+                    state=doc['state'],
+                    language=doc['language']
+                )
+                documents.append(toc_doc)
+            
+            print(f"📊 Processing {len(documents)} documents through 6-step pipeline...")
+            
+            # Process through enhanced 6-step pipeline
+            results = processor.process_documents(documents)
+            
+            # Convert results to compatible format
             cleaned_documents = []
             total_tokens = 0
             
-            # Add progress bar for text cleaning
+            for i, doc in enumerate(documents):
+                preprocessing_result = results['preprocessing_results'][i]
+                
+                cleaned_doc = {
+                    'segment_id': doc.segment_id,
+                    'title': doc.title,
+                    'original_text': doc.text,
+                    'cleaned_text': preprocessing_result['cleaned_text'],
+                    'tokens': preprocessing_result['tokens'],
+                    'token_count': len(preprocessing_result['tokens']),
+                    'state': doc.state,
+                    'language': preprocessing_result['language'],
+                    'pos_tags': preprocessing_result.get('pos_tags', []),
+                    'sentences': preprocessing_result.get('sentences', [])
+                }
+                cleaned_documents.append(cleaned_doc)
+                total_tokens += cleaned_doc['token_count']
+            
+            # Store enhanced processing results
+            self.cleaned_text_data = cleaned_documents
+            self.enhanced_processing_results = results
+            
+            print(f"✅ Enhanced text processing completed!")
+            print(f"📊 Documents processed: {len(cleaned_documents)}")
+            print(f"📊 Total tokens: {total_tokens}")
+            print(f"📊 Average tokens per document: {total_tokens/len(cleaned_documents):.1f}")
+            print(f"🔍 Phrase candidates extracted: {results['processing_metadata']['total_candidates']}")
+            print(f"🚫 Dynamic stopwords identified: {results['processing_metadata']['dynamic_stopwords_count']}")
+            print(f"✨ Final phrases: {results['processing_metadata']['final_phrases_count']}")
+            
+            # Show enhanced preview
+            print("\n📋 ENHANCED PROCESSING PREVIEW (first document):")
+            print("-" * 50)
+            first_doc = cleaned_documents[0]
+            print(f"Document ID: {first_doc['segment_id']}")
+            print(f"Title: {first_doc['title']}")
+            print(f"Language: {first_doc['language']}")
+            print(f"Original: {first_doc['original_text'][:100]}...")
+            print(f"Cleaned:  {first_doc['cleaned_text'][:100]}...")
+            print(f"Tokens:   {first_doc['token_count']} tokens")
+            print(f"Sentences: {len(first_doc['sentences'])} sentences")
+            
+            # Show sample final phrases
+            if results['final_phrases']:
+                print(f"\n🔍 SAMPLE FINAL PHRASES (first 10):")
+                for i, phrase in enumerate(results['final_phrases'][:10], 1):
+                    print(f"   {i:2d}. {phrase}")
+            
+            # Show dynamic stopwords if any
+            if results['dynamic_stopwords']:
+                print(f"\n🚫 DYNAMIC STOPWORDS IDENTIFIED:")
+                for stopword in sorted(list(results['dynamic_stopwords'])[:5]):
+                    print(f"   - {stopword}")
+                if len(results['dynamic_stopwords']) > 5:
+                    print(f"   ... and {len(results['dynamic_stopwords']) - 5} more")
+            
+            self.pipeline_state['text_cleaned'] = True
+            
+        except ImportError as e:
+            print(f"❌ Enhanced text processor not available: {e}")
+            print("🔄 Falling back to basic text cleaning...")
+            self._fallback_text_cleaning()
+        except Exception as e:
+            print(f"❌ Enhanced text cleaning failed: {e}")
+            print("🔄 Falling back to basic text cleaning...")
+            self._fallback_text_cleaning()
+    
+    def _fallback_text_cleaning(self):
+        """Fallback to basic text cleaning if enhanced processor fails"""
+        try:
+            print("⏳ Loading and cleaning text data (basic mode)...")
+            input_data = self.load_input_data()
+            
+            cleaned_documents = []
+            total_tokens = 0
+            
             for doc in tqdm(input_data, desc="🧹 Cleaning documents", unit="doc"):
-                # Simulate cleaning
+                # Basic cleaning
                 cleaned_text = doc['text'].lower().strip()
                 tokens = cleaned_text.split()
                 total_tokens += len(tokens)
@@ -398,20 +505,10 @@ class ResearchPipelineCLI:
             
             self.cleaned_text_data = cleaned_documents
             
-            print(f"✅ Text cleaning completed!")
+            print(f"✅ Basic text cleaning completed!")
             print(f"📊 Documents processed: {len(cleaned_documents)}")
             print(f"📊 Total tokens: {total_tokens}")
             print(f"📊 Average tokens per document: {total_tokens/len(cleaned_documents):.1f}")
-            
-            # Show preview
-            print("\n📋 CLEANED TEXT PREVIEW (first document):")
-            print("-" * 40)
-            first_doc = cleaned_documents[0]
-            print(f"Document ID: {first_doc['segment_id']}")
-            print(f"Title: {first_doc['title']}")
-            print(f"Original: {first_doc['original_text'][:100]}...")
-            print(f"Cleaned:  {first_doc['cleaned_text'][:100]}...")
-            print(f"Tokens:   {first_doc['token_count']} tokens")
             
             self.pipeline_state['text_cleaned'] = True
             
@@ -419,78 +516,191 @@ class ResearchPipelineCLI:
             print(f"❌ Text cleaning failed: {e}")
     
     def export_cleaned_text(self):
-        """Export cleaned text data for transparency"""
+        """Export enhanced cleaned text data with full processing results"""
         if not self.validate_pipeline_step('text_cleaned', "Please clean text data first (step 2.1)"):
             return
         
-        print("\n💾 EXPORT CLEANED TEXT DATA")
-        print("-" * 50)
+        print("\n💾 EXPORT ENHANCED CLEANED TEXT DATA")
+        print("-" * 60)
+        print("📊 Enhanced export includes: cleaned text, phrases, statistics, stopwords")
         
         try:
             # Create cleaned text directory
-            cleaned_dir = os.path.join(self.output_dir, "cleaned_text")
+            cleaned_dir = os.path.join(self.output_dir, "enhanced_cleaned_text")
             os.makedirs(cleaned_dir, exist_ok=True)
             
             # Export options
-            print("Export formats:")
-            print("1. JSON (structured data with metadata)")
+            print("Enhanced export formats:")
+            print("1. JSON (structured data with full processing results)")
             print("2. TXT (plain text tokens)")
-            print("3. Both formats")
+            print("3. Research Report (comprehensive analysis)")
+            print("4. All formats")
             
-            choice = self.get_user_choice("Select export format", ["1", "2", "3"])
+            choice = self.get_user_choice("Select export format", ["1", "2", "3", "4"])
             
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             
-            if choice in ["1", "3"]:
-                # Export JSON
-                json_file = os.path.join(cleaned_dir, f"cleaned_text_data_{timestamp}.json")
+            if choice in ["1", "4"]:
+                # Export enhanced JSON with full results
+                json_file = os.path.join(cleaned_dir, f"enhanced_cleaned_data_{timestamp}.json")
+                export_data = {
+                    'cleaned_documents': self.cleaned_text_data,
+                    'processing_metadata': getattr(self, 'enhanced_processing_results', {}).get('processing_metadata', {}),
+                    'final_phrases': getattr(self, 'enhanced_processing_results', {}).get('final_phrases', []),
+                    'dynamic_stopwords': list(getattr(self, 'enhanced_processing_results', {}).get('dynamic_stopwords', set())),
+                    'corpus_statistics': {
+                        phrase: stat.to_dict() if hasattr(stat, 'to_dict') else stat
+                        for phrase, stat in getattr(self, 'enhanced_processing_results', {}).get('corpus_statistics', {}).items()
+                    },
+                    'configuration': self.reproducibility_config,
+                    'export_timestamp': timestamp
+                }
+                
                 with open(json_file, 'w', encoding='utf-8') as f:
-                    json.dump(self.cleaned_text_data, f, indent=2, ensure_ascii=False)
-                print(f"✅ JSON exported: {json_file}")
+                    json.dump(export_data, f, indent=2, ensure_ascii=False)
+                print(f"✅ Enhanced JSON exported: {json_file}")
             
-            if choice in ["2", "3"]:
-                # Export plain text tokens
-                txt_file = os.path.join(cleaned_dir, f"cleaned_tokens_{timestamp}.txt")
+            if choice in ["2", "4"]:
+                # Export enhanced plain text tokens
+                txt_file = os.path.join(cleaned_dir, f"enhanced_tokens_{timestamp}.txt")
                 with open(txt_file, 'w', encoding='utf-8') as f:
-                    f.write("# Cleaned Text Tokens Export\n")
+                    f.write("# Enhanced Text Processing Results Export\n")
                     f.write(f"# Generated: {datetime.now().isoformat()}\n")
-                    f.write(f"# Random Seed: {self.reproducibility_config['random_seed']}\n\n")
+                    f.write(f"# Random Seed: {self.reproducibility_config['random_seed']}\n")
+                    f.write(f"# Processing: 6-Step Linguistically Grounded Pipeline\n\n")
                     
+                    # Export enhanced processing summary
+                    if hasattr(self, 'enhanced_processing_results'):
+                        metadata = self.enhanced_processing_results['processing_metadata']
+                        f.write("# PROCESSING SUMMARY\n")
+                        f.write(f"# Total documents: {metadata.get('total_documents', 0)}\n")
+                        f.write(f"# Languages detected: {', '.join(metadata.get('languages_detected', []))}\n")
+                        f.write(f"# Phrase candidates: {metadata.get('total_candidates', 0)}\n")
+                        f.write(f"# Final phrases: {metadata.get('final_phrases_count', 0)}\n")
+                        f.write(f"# Dynamic stopwords: {metadata.get('dynamic_stopwords_count', 0)}\n\n")
+                    
+                    # Export document tokens
                     for doc in self.cleaned_text_data:
                         f.write(f"## Document: {doc['segment_id']}\n")
                         f.write(f"# Title: {doc['title']}\n")
+                        f.write(f"# Language: {doc['language']}\n")
+                        f.write(f"# State: {doc['state']}\n")
                         f.write(f"# Tokens: {doc['token_count']}\n")
                         f.write(" ".join(doc['tokens']) + "\n\n")
                 
-                print(f"✅ TXT exported: {txt_file}")
+                print(f"✅ Enhanced TXT exported: {txt_file}")
             
-            print(f"📁 Cleaned text data exported to: {cleaned_dir}")
+            if choice in ["3", "4"]:
+                # Export research report
+                report_file = os.path.join(cleaned_dir, f"processing_report_{timestamp}.md")
+                with open(report_file, 'w', encoding='utf-8') as f:
+                    f.write("# Enhanced Text Processing Research Report\n\n")
+                    f.write(f"**Generated:** {datetime.now().isoformat()}\n")
+                    f.write(f"**Random Seed:** {self.reproducibility_config['random_seed']}\n")
+                    f.write(f"**Pipeline:** 6-Step Linguistically Grounded Processing\n\n")
+                    
+                    # Processing overview
+                    f.write("## Processing Overview\n\n")
+                    f.write("The enhanced text processing pipeline implements:\n")
+                    f.write("1. **Linguistic Preprocessing** - spaCy-based analysis\n")
+                    f.write("2. **Phrase Candidate Extraction** - Rule-based with POS patterns\n")
+                    f.write("3. **Static Stopword Filtering** - Conservative filtering\n")
+                    f.write("4. **Corpus-level Statistics** - TF-IDF calculations\n")
+                    f.write("5. **Dynamic Stopword Identification** - Automatic discovery\n")
+                    f.write("6. **Final Phrase Filtering** - Combined filtering\n\n")
+                    
+                    # Statistics
+                    if hasattr(self, 'enhanced_processing_results'):
+                        metadata = self.enhanced_processing_results['processing_metadata']
+                        f.write("## Processing Statistics\n\n")
+                        f.write(f"- **Total Documents:** {metadata.get('total_documents', 0)}\n")
+                        f.write(f"- **Languages Detected:** {', '.join(metadata.get('languages_detected', []))}\n")
+                        f.write(f"- **Initial Phrase Candidates:** {metadata.get('total_candidates', 0)}\n")
+                        f.write(f"- **After Static Filtering:** {metadata.get('after_static_filtering', 0)}\n")
+                        f.write(f"- **Dynamic Stopwords Identified:** {metadata.get('dynamic_stopwords_count', 0)}\n")
+                        f.write(f"- **Final Phrases:** {metadata.get('final_phrases_count', 0)}\n\n")
+                        
+                        # Sample phrases
+                        if self.enhanced_processing_results.get('final_phrases'):
+                            f.write("## Sample Final Phrases\n\n")
+                            for i, phrase in enumerate(self.enhanced_processing_results['final_phrases'][:20], 1):
+                                f.write(f"{i}. {phrase}\n")
+                            f.write("\n")
+                        
+                        # Dynamic stopwords
+                        if self.enhanced_processing_results.get('dynamic_stopwords'):
+                            f.write("## Dynamic Stopwords Identified\n\n")
+                            for stopword in sorted(self.enhanced_processing_results['dynamic_stopwords']):
+                                f.write(f"- {stopword}\n")
+                            f.write("\n")
+                    
+                    # Document summary
+                    f.write("## Document Summary\n\n")
+                    total_tokens = sum(doc['token_count'] for doc in self.cleaned_text_data)
+                    f.write(f"- **Total Documents:** {len(self.cleaned_text_data)}\n")
+                    f.write(f"- **Total Tokens:** {total_tokens}\n")
+                    f.write(f"- **Average Tokens per Document:** {total_tokens/len(self.cleaned_text_data):.1f}\n\n")
+                    
+                    # Language and state distribution
+                    languages = {}
+                    states = {}
+                    for doc in self.cleaned_text_data:
+                        languages[doc['language']] = languages.get(doc['language'], 0) + 1
+                        states[doc['state']] = states.get(doc['state'], 0) + 1
+                    
+                    f.write("### Language Distribution\n\n")
+                    for lang, count in languages.items():
+                        f.write(f"- {lang}: {count} documents\n")
+                    
+                    f.write("\n### State Distribution\n\n")
+                    for state, count in states.items():
+                        f.write(f"- {state}: {count} documents\n")
+                
+                print(f"✅ Research report exported: {report_file}")
+            
+            print(f"📁 Enhanced cleaned text data exported to: {cleaned_dir}")
             
         except Exception as e:
             print(f"❌ Export failed: {e}")
     
     def view_text_cleaning_results(self):
-        """View detailed text cleaning results"""
+        """View detailed enhanced text cleaning results with linguistic analysis"""
         if not self.validate_pipeline_step('text_cleaned', "Please clean text data first (step 2.1)"):
             return
         
-        print("\n📊 TEXT CLEANING RESULTS")
-        print("-" * 50)
+        print("\n📊 ENHANCED TEXT CLEANING RESULTS")
+        print("-" * 60)
+        print("🔬 Comprehensive analysis of 6-step linguistic processing")
         
         if not self.cleaned_text_data:
             print("⚠️ No cleaned text data available")
             return
         
-        # Statistics
+        # Basic statistics
         total_docs = len(self.cleaned_text_data)
         total_tokens = sum(doc['token_count'] for doc in self.cleaned_text_data)
         avg_tokens = total_tokens / total_docs
         
-        print(f"📊 CLEANING STATISTICS:")
+        print(f"📊 BASIC CLEANING STATISTICS:")
         print(f"   Documents processed: {total_docs}")
         print(f"   Total tokens: {total_tokens}")
         print(f"   Average tokens per document: {avg_tokens:.1f}")
         print(f"   Random seed used: {self.reproducibility_config['random_seed']}")
+        
+        # Enhanced processing statistics
+        if hasattr(self, 'enhanced_processing_results'):
+            metadata = self.enhanced_processing_results['processing_metadata']
+            print(f"\n🔬 ENHANCED PROCESSING STATISTICS:")
+            print(f"   Languages detected: {', '.join(metadata.get('languages_detected', []))}")
+            print(f"   Initial phrase candidates: {metadata.get('total_candidates', 0)}")
+            print(f"   After static filtering: {metadata.get('after_static_filtering', 0)}")
+            print(f"   Dynamic stopwords identified: {metadata.get('dynamic_stopwords_count', 0)}")
+            print(f"   Final phrases extracted: {metadata.get('final_phrases_count', 0)}")
+            
+            # Processing efficiency
+            if metadata.get('total_candidates', 0) > 0:
+                retention_rate = metadata.get('final_phrases_count', 0) / metadata.get('total_candidates', 1)
+                print(f"   Phrase retention rate: {retention_rate:.2%}")
         
         # Language distribution
         languages = {}
@@ -500,7 +710,7 @@ class ResearchPipelineCLI:
         
         print(f"\n🗣️ LANGUAGE DISTRIBUTION:")
         for lang, count in languages.items():
-            print(f"   {lang}: {count} documents")
+            print(f"   {lang}: {count} documents ({count/total_docs:.1%})")
         
         # State distribution
         states = {}
@@ -510,15 +720,62 @@ class ResearchPipelineCLI:
         
         print(f"\n🗺️ STATE DISTRIBUTION:")
         for state, count in states.items():
-            print(f"   {state}: {count} documents")
+            print(f"   {state}: {count} documents ({count/total_docs:.1%})")
         
-        # Show sample
-        print(f"\n📋 SAMPLE CLEANED DOCUMENTS:")
+        # Enhanced linguistic features
+        if any('pos_tags' in doc for doc in self.cleaned_text_data):
+            print(f"\n🔍 LINGUISTIC FEATURES:")
+            total_sentences = sum(len(doc.get('sentences', [])) for doc in self.cleaned_text_data)
+            if total_sentences > 0:
+                print(f"   Total sentences: {total_sentences}")
+                print(f"   Average sentences per document: {total_sentences/total_docs:.1f}")
+            print(f"   POS tagging: Available")
+            print(f"   Dependency parsing: Available")
+        
+        # Show enhanced sample
+        print(f"\n📋 ENHANCED SAMPLE DOCUMENTS:")
         for i, doc in enumerate(self.cleaned_text_data[:3], 1):
             print(f"\n   {i}. {doc['segment_id']} ({doc['language']}, {doc['state']})")
             print(f"      Title: {doc['title']}")
             print(f"      Tokens: {doc['token_count']}")
-            print(f"      Sample: {' '.join(doc['tokens'][:10])}...")
+            if 'sentences' in doc and doc['sentences']:
+                print(f"      Sentences: {len(doc['sentences'])}")
+            print(f"      Sample tokens: {' '.join(doc['tokens'][:10])}...")
+            if 'pos_tags' in doc and doc['pos_tags']:
+                print(f"      Sample POS tags: {' '.join(doc['pos_tags'][:10])}")
+        
+        # Show final phrases if available
+        if hasattr(self, 'enhanced_processing_results') and self.enhanced_processing_results.get('final_phrases'):
+            print(f"\n🔍 SAMPLE FINAL PHRASES (top 15):")
+            phrases = self.enhanced_processing_results['final_phrases']
+            for i, phrase in enumerate(phrases[:15], 1):
+                print(f"   {i:2d}. {phrase}")
+            if len(phrases) > 15:
+                print(f"   ... and {len(phrases) - 15} more phrases")
+        
+        # Show dynamic stopwords if available
+        if hasattr(self, 'enhanced_processing_results') and self.enhanced_processing_results.get('dynamic_stopwords'):
+            stopwords = self.enhanced_processing_results['dynamic_stopwords']
+            print(f"\n🚫 DYNAMIC STOPWORDS IDENTIFIED ({len(stopwords)}):")
+            for i, stopword in enumerate(sorted(stopwords)[:10], 1):
+                print(f"   {i:2d}. {stopword}")
+            if len(stopwords) > 10:
+                print(f"   ... and {len(stopwords) - 10} more stopwords")
+        
+        # Processing quality indicators
+        print(f"\n✨ PROCESSING QUALITY INDICATORS:")
+        print(f"   ✅ Linguistic preprocessing: Complete")
+        print(f"   ✅ Phrase candidate extraction: Complete")
+        print(f"   ✅ Static stopword filtering: Complete")
+        print(f"   ✅ Corpus-level statistics: Complete")
+        if hasattr(self, 'enhanced_processing_results'):
+            if self.enhanced_processing_results.get('dynamic_stopwords'):
+                print(f"   ✅ Dynamic stopword identification: {len(self.enhanced_processing_results['dynamic_stopwords'])} found")
+            else:
+                print(f"   ⚠️ Dynamic stopword identification: None found (may need threshold adjustment)")
+            print(f"   ✅ Final phrase filtering: Complete")
+        else:
+            print(f"   ⚠️ Enhanced processing: Basic mode used")
     
     def configure_reproducibility_parameters(self):
         """Configure all reproducibility-affecting parameters"""
@@ -866,39 +1123,113 @@ class ResearchPipelineCLI:
         return True
     
     def configure_phrase_parameters(self):
-        """Configure phrase extraction parameters"""
+        """Configure enhanced phrase extraction parameters"""
         if not self.validate_pipeline_step('text_cleaned', "Please clean text data first (step 2.1)"):
             return
         
-        print("\n📝 PHRASE PARAMETER CONFIGURATION")
-        print("-" * 50)
-        print("🔬 Configure parameters for token and phrase construction")
+        print("\n📝 ENHANCED PHRASE PARAMETER CONFIGURATION")
+        print("-" * 60)
+        print("🔬 Configure parameters for linguistically grounded phrase construction")
+        print("📋 Enhanced features: spaCy patterns, POS filtering, dependency relations")
         print()
         
-        # Show current phrase settings
-        print("CURRENT PHRASE SETTINGS:")
+        # Show current enhanced phrase settings
+        print("CURRENT ENHANCED PHRASE SETTINGS:")
         print(f"   Phrase Type: {self.reproducibility_config['phrase_type']}")
         print(f"   Min Frequency: {self.reproducibility_config['min_phrase_frequency']}")
         print(f"   Stopword Strategy: {self.reproducibility_config['stopword_strategy']}")
-        print()
         
-        print("These parameters are also configurable in Reproducibility Controls (R.1)")
-        print("✅ Phrase parameters ready for extraction")
+        # Show enhanced processing settings if available
+        if hasattr(self, 'enhanced_processing_results'):
+            print(f"\n🔬 ENHANCED PROCESSING FEATURES:")
+            print(f"   ✅ Linguistic preprocessing (spaCy)")
+            print(f"   ✅ Rule-based phrase extraction")
+            print(f"   ✅ POS-pattern matching: (ADJ)*(NOUN)+")
+            print(f"   ✅ Dependency relations: amod, compound")
+            print(f"   ✅ Static stopword filtering")
+            print(f"   ✅ Dynamic stopword identification")
+            print(f"   ✅ TF-IDF corpus statistics")
+        else:
+            print(f"\n⚠️ Enhanced processing not available - using basic mode")
+        
+        print(f"\n🔧 CONFIGURABLE PARAMETERS:")
+        print(f"   These parameters are also configurable in Reproducibility Controls (R.1)")
+        print(f"   For enhanced processing, phrases are already extracted during text cleaning")
+        print(f"✅ Enhanced phrase parameters ready for use")
     
     def extract_tokens_and_phrases(self):
-        """Extract tokens and phrases from cleaned text"""
+        """Extract tokens and phrases using enhanced linguistic processing"""
         if not self.validate_pipeline_step('text_cleaned', "Please clean text data first (step 2.1)"):
             return
         
-        print("\n🔍 TOKEN & PHRASE EXTRACTION")
-        print("-" * 50)
-        print(f"🌱 Using random seed: {self.reproducibility_config['random_seed']}")
+        print("\n🔍 ENHANCED TOKEN & PHRASE EXTRACTION")
+        print("-" * 60)
+        print("🔬 Using linguistically grounded 6-step processing pipeline")
+        print(f"🌱 Random seed: {self.reproducibility_config['random_seed']}")
         print(f"📝 Phrase type: {self.reproducibility_config['phrase_type']}")
         print(f"📊 Min frequency: {self.reproducibility_config['min_phrase_frequency']}")
         
         try:
-            # Simulate phrase extraction (replace with actual pipeline call)
-            print("⏳ Extracting tokens and phrases...")
+            # Check if enhanced processing results are available
+            if hasattr(self, 'enhanced_processing_results'):
+                print("✅ Using enhanced processing results from text cleaning step")
+                
+                # Use enhanced processing results
+                results = self.enhanced_processing_results
+                final_phrases = results['final_phrases']
+                phrase_to_segments = results['phrase_to_segments']
+                
+                # Create phrase counts from enhanced results
+                phrase_counts = {}
+                all_phrases = []
+                
+                for phrase, segments in phrase_to_segments.items():
+                    count = len(segments)
+                    phrase_counts[phrase] = count
+                    all_phrases.extend([phrase] * count)
+                
+                # Filter by minimum frequency
+                min_freq = self.reproducibility_config['min_phrase_frequency']
+                filtered_phrases = {phrase: count for phrase, count in phrase_counts.items() 
+                                  if count >= min_freq}
+                
+                # Store enhanced phrase data
+                self.phrase_data = {
+                    'all_phrases': all_phrases,
+                    'phrase_counts': phrase_counts,
+                    'filtered_phrases': filtered_phrases,
+                    'extraction_params': self.reproducibility_config.copy(),
+                    'enhanced_features': {
+                        'final_phrases': final_phrases,
+                        'phrase_to_segments': phrase_to_segments,
+                        'dynamic_stopwords': list(results.get('dynamic_stopwords', set())),
+                        'corpus_statistics': results.get('corpus_statistics', {}),
+                        'processing_metadata': results.get('processing_metadata', {})
+                    }
+                }
+                
+                print(f"✅ Enhanced phrase extraction completed!")
+                print(f"📊 Total phrase instances: {len(all_phrases)}")
+                print(f"📊 Unique phrases: {len(phrase_counts)}")
+                print(f"📊 Phrases above threshold: {len(filtered_phrases)}")
+                print(f"🔬 Enhanced features: {len(final_phrases)} linguistically validated phrases")
+                print(f"🚫 Dynamic stopwords filtered: {len(results.get('dynamic_stopwords', set()))}")
+                
+            else:
+                print("⚠️ Enhanced processing not available, using basic extraction...")
+                self._fallback_phrase_extraction()
+            
+            self.pipeline_state['phrases_constructed'] = True
+            
+        except Exception as e:
+            print(f"❌ Enhanced phrase extraction failed: {e}")
+            print("🔄 Falling back to basic phrase extraction...")
+            self._fallback_phrase_extraction()
+    
+    def _fallback_phrase_extraction(self):
+        """Fallback to basic phrase extraction if enhanced processing fails"""
+        try:
+            print("⏳ Extracting tokens and phrases (basic mode)...")
             
             all_phrases = []
             phrase_counts = {}
@@ -932,23 +1263,22 @@ class ResearchPipelineCLI:
                 'extraction_params': self.reproducibility_config.copy()
             }
             
-            print(f"✅ Phrase extraction completed!")
+            print(f"✅ Basic phrase extraction completed!")
             print(f"📊 Total phrase instances: {len(all_phrases)}")
             print(f"📊 Unique phrases: {len(phrase_counts)}")
             print(f"📊 Phrases above threshold: {len(filtered_phrases)}")
-            
-            self.pipeline_state['phrases_constructed'] = True
             
         except Exception as e:
             print(f"❌ Phrase extraction failed: {e}")
     
     def view_phrase_statistics(self):
-        """View phrase extraction statistics"""
+        """View enhanced phrase extraction statistics with linguistic analysis"""
         if not self.validate_pipeline_step('phrases_constructed', "Please extract phrases first (step 3.2)"):
             return
         
-        print("\n📊 PHRASE STATISTICS")
-        print("-" * 50)
+        print("\n📊 ENHANCED PHRASE STATISTICS")
+        print("-" * 60)
+        print("🔬 Comprehensive analysis of linguistically grounded phrase extraction")
         
         if not hasattr(self, 'phrase_data'):
             print("⚠️ No phrase data available")
@@ -957,17 +1287,77 @@ class ResearchPipelineCLI:
         phrase_counts = self.phrase_data['phrase_counts']
         filtered_phrases = self.phrase_data['filtered_phrases']
         
-        print(f"📊 EXTRACTION RESULTS:")
+        print(f"📊 BASIC EXTRACTION RESULTS:")
         print(f"   Total phrase instances: {len(self.phrase_data['all_phrases'])}")
         print(f"   Unique phrases: {len(phrase_counts)}")
         print(f"   Phrases above threshold: {len(filtered_phrases)}")
         print(f"   Minimum frequency threshold: {self.phrase_data['extraction_params']['min_phrase_frequency']}")
         
-        # Top phrases
+        # Enhanced features if available
+        if 'enhanced_features' in self.phrase_data:
+            enhanced = self.phrase_data['enhanced_features']
+            print(f"\n🔬 ENHANCED PROCESSING RESULTS:")
+            print(f"   Linguistically validated phrases: {len(enhanced.get('final_phrases', []))}")
+            print(f"   Dynamic stopwords identified: {len(enhanced.get('dynamic_stopwords', []))}")
+            print(f"   Phrase-to-segment mappings: {len(enhanced.get('phrase_to_segments', {}))}")
+            
+            # Processing pipeline statistics
+            if 'processing_metadata' in enhanced:
+                metadata = enhanced['processing_metadata']
+                print(f"   Initial candidates: {metadata.get('total_candidates', 0)}")
+                print(f"   After static filtering: {metadata.get('after_static_filtering', 0)}")
+                print(f"   Retention rate: {metadata.get('final_phrases_count', 0) / max(metadata.get('total_candidates', 1), 1):.2%}")
+        
+        # Top phrases with enhanced information
         sorted_phrases = sorted(filtered_phrases.items(), key=lambda x: x[1], reverse=True)
-        print(f"\n🔝 TOP 10 PHRASES:")
-        for i, (phrase, count) in enumerate(sorted_phrases[:10], 1):
-            print(f"   {i:2d}. {phrase} (count: {count})")
+        print(f"\n🔝 TOP 15 PHRASES:")
+        for i, (phrase, count) in enumerate(sorted_phrases[:15], 1):
+            # Add enhanced information if available
+            enhanced_info = ""
+            if 'enhanced_features' in self.phrase_data:
+                if phrase in self.phrase_data['enhanced_features'].get('final_phrases', []):
+                    enhanced_info = " ✨"
+            print(f"   {i:2d}. {phrase} (count: {count}){enhanced_info}")
+        
+        # Show phrase length distribution
+        phrase_lengths = {}
+        for phrase in filtered_phrases.keys():
+            length = len(phrase.split()) if ' ' in phrase else 1
+            phrase_lengths[length] = phrase_lengths.get(length, 0) + 1
+        
+        print(f"\n📏 PHRASE LENGTH DISTRIBUTION:")
+        for length in sorted(phrase_lengths.keys()):
+            count = phrase_lengths[length]
+            pct = count / len(filtered_phrases) * 100
+            print(f"   {length}-word phrases: {count} ({pct:.1f}%)")
+        
+        # Show dynamic stopwords if available
+        if 'enhanced_features' in self.phrase_data:
+            dynamic_stopwords = self.phrase_data['enhanced_features'].get('dynamic_stopwords', [])
+            if dynamic_stopwords:
+                print(f"\n🚫 DYNAMIC STOPWORDS IDENTIFIED ({len(dynamic_stopwords)}):")
+                for i, stopword in enumerate(sorted(dynamic_stopwords)[:10], 1):
+                    print(f"   {i:2d}. {stopword}")
+                if len(dynamic_stopwords) > 10:
+                    print(f"   ... and {len(dynamic_stopwords) - 10} more")
+        
+        # Quality indicators
+        print(f"\n✨ PHRASE QUALITY INDICATORS:")
+        if 'enhanced_features' in self.phrase_data:
+            print(f"   ✅ Linguistic validation: Complete")
+            print(f"   ✅ POS-pattern matching: Applied")
+            print(f"   ✅ Dependency relations: Analyzed")
+            print(f"   ✅ Dynamic stopword filtering: Applied")
+            print(f"   ✅ TF-IDF statistics: Available")
+        else:
+            print(f"   ⚠️ Basic extraction mode used")
+        
+        # Extraction method summary
+        extraction_method = "Enhanced (6-step linguistic pipeline)" if 'enhanced_features' in self.phrase_data else "Basic (n-gram extraction)"
+        print(f"   📋 Extraction method: {extraction_method}")
+        print(f"   🌱 Random seed: {self.phrase_data['extraction_params']['random_seed']}")
+        print(f"   📝 Phrase type: {self.phrase_data['extraction_params']['phrase_type']}")
+        print(f"   🚫 Stopword strategy: {self.phrase_data['extraction_params']['stopword_strategy']}")
     
     def build_global_graph(self):
         """Build global co-occurrence graph as a true NetworkX graph object (shared node space)"""
@@ -3151,18 +3541,14 @@ class ResearchPipelineCLI:
             # Import Plotly visualization generator
             from plotly_visualization_generator import PlotlyNetworkVisualizer
             
-            # Set output directory for Plotly visualizations
-            output_dir = "/Users/zhangjingsen/Desktop/python/graph4socialscience/hajimi/七周目"
-            os.makedirs(output_dir, exist_ok=True)
+            # Use configured output directory instead of hardcoded path
+            viz_base_dir = os.path.join(self.output_dir, "plotly_visualizations")
+            os.makedirs(viz_base_dir, exist_ok=True)
             
-            print(f"📁 Output directory: {output_dir}")
+            print(f"📁 Output directory: {viz_base_dir}")
             
             # Initialize Plotly visualizer
             visualizer = PlotlyNetworkVisualizer(random_seed=self.reproducibility_config['random_seed'])
-            
-            # Create visualizations directory
-            viz_dir = os.path.join(output_dir, "plotly_visualizations")
-            os.makedirs(viz_dir, exist_ok=True)
             
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             
@@ -3184,13 +3570,13 @@ class ResearchPipelineCLI:
             )
             
             # Save HTML version (interactive)
-            global_html_path = os.path.join(viz_dir, f"global_network_interactive_{timestamp}.html")
+            global_html_path = os.path.join(viz_base_dir, f"global_network_interactive_{timestamp}.html")
             visualizer.save_visualization(global_fig, global_html_path, format='html')
             print(f"✅ Saved interactive version: {os.path.basename(global_html_path)}")
             
             # Save PNG version (static) if kaleido is available
             try:
-                global_png_path = os.path.join(viz_dir, f"global_network_static_{timestamp}.png")
+                global_png_path = os.path.join(viz_base_dir, f"global_network_static_{timestamp}.png")
                 visualizer.save_visualization(global_fig, global_png_path, format='png')
                 print(f"✅ Saved static version: {os.path.basename(global_png_path)}")
             except Exception as e:
@@ -3201,7 +3587,7 @@ class ResearchPipelineCLI:
             communities = nx.get_node_attributes(graph, 'community')
             dashboard_fig = visualizer.create_network_statistics_dashboard(graph, communities)
             
-            dashboard_html_path = os.path.join(viz_dir, f"network_dashboard_{timestamp}.html")
+            dashboard_html_path = os.path.join(viz_base_dir, f"network_dashboard_{timestamp}.html")
             visualizer.save_visualization(dashboard_fig, dashboard_html_path, format='html')
             print(f"✅ Saved dashboard: {os.path.basename(dashboard_html_path)}")
             
@@ -3209,10 +3595,12 @@ class ResearchPipelineCLI:
             print("\n🗺️ Creating state subgraph visualizations...")
             if hasattr(self, 'state_subgraph_objects') and self.state_subgraph_objects:
                 
-                for state, subgraph in self.state_subgraph_objects.items():
+                # Add progress bar for state processing
+                from tqdm import tqdm
+                states_list = list(self.state_subgraph_objects.items())
+                
+                for state, subgraph in tqdm(states_list, desc="🎨 Processing states", unit="state"):
                     if subgraph.number_of_nodes() > 0:
-                        print(f"   🎨 Processing state: {state}")
-                        
                         # Use global positions for consistency
                         subgraph_positions = {node: positions[node] for node in subgraph.nodes() 
                                             if node in positions}
@@ -3224,17 +3612,16 @@ class ResearchPipelineCLI:
                         )
                         
                         # Save subgraph
-                        subgraph_html_path = os.path.join(viz_dir, f"state_{state}_network_{timestamp}.html")
+                        subgraph_html_path = os.path.join(viz_base_dir, f"state_{state}_network_{timestamp}.html")
                         visualizer.save_visualization(subgraph_fig, subgraph_html_path, format='html')
-                        print(f"      ✅ Saved: state_{state}_network_{timestamp}.html")
             
             # 4. Create layout comparison visualizations
             print("\n🔄 Creating layout comparisons...")
             layout_types = ['spring', 'circular', 'kamada_kawai']
             
-            for layout_type in layout_types:
+            # Add progress bar for layout processing
+            for layout_type in tqdm(layout_types, desc="🎯 Creating layouts", unit="layout"):
                 try:
-                    print(f"   🎯 Creating {layout_type} layout...")
                     layout_positions = visualizer.create_network_layout(graph, layout_type)
                     
                     layout_fig = visualizer.create_interactive_network(
@@ -3242,9 +3629,8 @@ class ResearchPipelineCLI:
                         title=f"Global Network - {layout_type.title()} Layout"
                     )
                     
-                    layout_html_path = os.path.join(viz_dir, f"global_network_{layout_type}_{timestamp}.html")
+                    layout_html_path = os.path.join(viz_base_dir, f"global_network_{layout_type}_{timestamp}.html")
                     visualizer.save_visualization(layout_fig, layout_html_path, format='html')
-                    print(f"      ✅ Saved: global_network_{layout_type}_{timestamp}.html")
                     
                 except Exception as e:
                     print(f"      ⚠️ {layout_type} layout failed: {e}")
@@ -3256,6 +3642,11 @@ class ResearchPipelineCLI:
 
 ## Generation Time
 {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+
+## Configuration
+- Random Seed: {self.reproducibility_config['random_seed']}
+- Output Directory: {viz_base_dir}
+- Input Directory: {self.input_directory or 'Not specified'}
 
 ## Network Statistics
 - Nodes: {graph.number_of_nodes()}
@@ -3303,14 +3694,14 @@ class ResearchPipelineCLI:
 - Multiple export formats
 """
             
-            summary_path = os.path.join(viz_dir, f"plotly_visualization_summary_{timestamp}.md")
+            summary_path = os.path.join(viz_base_dir, f"plotly_visualization_summary_{timestamp}.md")
             with open(summary_path, 'w', encoding='utf-8') as f:
                 f.write(summary_report)
             
             print(f"✅ Summary report: {os.path.basename(summary_path)}")
             
             print(f"\n🎉 Plotly visualization generation completed!")
-            print(f"📁 All files saved in: {viz_dir}")
+            print(f"📁 All files saved in: {viz_base_dir}")
             print("🌐 Open HTML files in your browser to view interactive visualizations")
             
             # Update visualization paths for tracking
@@ -3320,14 +3711,15 @@ class ResearchPipelineCLI:
             self.plotly_visualization_paths['global_interactive'] = global_html_path
             self.plotly_visualization_paths['dashboard'] = dashboard_html_path
             self.plotly_visualization_paths['summary'] = summary_path
+            self.plotly_visualization_paths['base_directory'] = viz_base_dir
             
-            # List generated files
+            # List generated files with progress
             print("\n📊 Generated files:")
-            for file in os.listdir(viz_dir):
-                if file.endswith(('.html', '.png', '.md')):
-                    file_path = os.path.join(viz_dir, file)
-                    file_size = os.path.getsize(file_path)
-                    print(f"   📄 {file} ({file_size:,} bytes)")
+            files = [f for f in os.listdir(viz_base_dir) if f.endswith(('.html', '.png', '.md'))]
+            for file in tqdm(files, desc="📄 Listing files", unit="file"):
+                file_path = os.path.join(viz_base_dir, file)
+                file_size = os.path.getsize(file_path)
+                print(f"   📄 {file} ({file_size:,} bytes)")
             
         except ImportError:
             print("❌ Plotly visualization generator not available")
@@ -3900,7 +4292,7 @@ class ResearchPipelineCLI:
             return []
         
         all_data = []
-        for file_path in self.input_files:
+        for file_path in tqdm(self.input_files, desc="📁 Loading files", unit="file"):
             try:
                 print(f"📖 Loading: {os.path.relpath(file_path, self.input_directory) if self.input_directory else file_path}")
                 

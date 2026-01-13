@@ -19,6 +19,7 @@ import scipy.sparse
 from collections import defaultdict, Counter
 from itertools import combinations
 import logging
+from tqdm import tqdm
 from datetime import datetime
 
 try:
@@ -136,7 +137,7 @@ class GlobalGraphBuilder:
         all_phrases = set()
         phrase_frequencies = Counter()
         
-        for doc in processed_docs:
+        for doc in tqdm(processed_docs, desc="📄 Processing documents", unit="doc"):
             for window in doc.windows:
                 for phrase in window.phrases:
                     all_phrases.add(phrase)
@@ -178,7 +179,7 @@ class GlobalGraphBuilder:
         
         # 统计共现关系
         total_windows = 0
-        for doc in processed_docs:
+        for doc in tqdm(processed_docs, desc="📄 Processing documents", unit="doc"):
             for window in doc.windows:
                 if len(window.phrases) < 2:
                     continue

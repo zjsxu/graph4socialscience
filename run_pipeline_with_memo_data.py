@@ -18,10 +18,10 @@ def run_automated_pipeline():
     print("=" * 50)
     print("📋 Using data paths from memo.txt")
     
-    # Data paths from memo
-    chinese_data_path = "/Users/zhangjingsen/Desktop/python/graph4socialscience/semantic-node-refinement-test/data/raw"
-    english_toc_path = "/Users/zhangjingsen/Desktop/python/graph4socialscience/toc_doc"
-    output_base_path = "/Users/zhangjingsen/Desktop/python/graph4socialscience/hajimi/to/"
+    # Data paths - use relative paths for portability
+    chinese_data_path = "sample_research_data"
+    english_toc_path = "test_input"
+    output_base_path = "test_output"
     
     # Check which data paths exist
     chinese_exists = os.path.exists(chinese_data_path)

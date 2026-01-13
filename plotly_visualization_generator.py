@@ -456,7 +456,7 @@ def test_plotly_visualization():
         app = ResearchPipelineCLI()
         
         # 设置输出目录
-        output_dir = "/Users/zhangjingsen/Desktop/python/graph4socialscience/hajimi/七周目"
+        output_dir = "test_output"
         app.output_dir = output_dir
         os.makedirs(output_dir, exist_ok=True)
         

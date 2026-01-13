@@ -104,6 +104,27 @@ class Config:
             'output_validation': True,
             'intermediate_validation': False,
             'strict_mode': False
+        },
+        'enhanced_text_processing': {
+            # Phrase extraction settings
+            'min_phrase_length': 2,
+            'max_phrase_length': 4,
+            
+            # Static stopword settings
+            'english_stopwords_file': None,
+            'chinese_stopwords_file': None,
+            
+            # Dynamic stopword identification
+            'df_threshold_ratio': 0.8,  # DF / N >= threshold for high frequency
+            'tfidf_threshold': 0.1,     # Low TF-IDF threshold for low discrimination
+            'min_frequency_for_stopword': 5,  # Minimum frequency to consider as stopword
+            
+            # spaCy settings
+            'use_spacy': True,
+            'spacy_models': {
+                'english': 'en_core_web_sm',
+                'chinese': 'zh_core_web_sm'
+            }
         }
     }
     

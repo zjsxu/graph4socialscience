@@ -27,7 +27,7 @@ class IsolatedVisualizationTester:
     """独立的可视化测试器"""
     
     def __init__(self):
-        self.output_dir = "/Users/zhangjingsen/Desktop/python/graph4socialscience/hajimi/haniumoa"
+        self.output_dir = "test_output"
         os.makedirs(self.output_dir, exist_ok=True)
         
         # 可视化配置

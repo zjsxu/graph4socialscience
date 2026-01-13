@@ -17,8 +17,8 @@ sys.path.insert(0, '.')
 def setup_test_environment():
     """Setup test environment with real data paths"""
     test_config = {
-        'input_dir': '/Users/zhangjingsen/Desktop/python/graph4socialscience/toc_doc',
-        'output_dir': '/Users/zhangjingsen/Desktop/python/graph4socialscience/2nd_output_dir',
+        'input_dir': 'test_input',
+        'output_dir': 'test_output',
         'test_mode': True
     }
     

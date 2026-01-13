@@ -96,7 +96,7 @@ def test_complete_pipeline_with_visualization():
     
     # 创建测试数据
     test_dir = create_realistic_test_data()
-    output_dir = "/Users/zhangjingsen/Desktop/python/graph4socialscience/hajimi/haniumoa"
+    output_dir = "test_output"
     os.makedirs(output_dir, exist_ok=True)
     
     try:

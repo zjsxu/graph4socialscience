@@ -1,0 +1,40 @@
+# Enhanced Text Processing Requirements
+# Core NLP dependencies for linguistically grounded processing
+
+# spaCy for linguistic analysis
+spacy>=3.4.0
+# spaCy language models (install separately):
+# python -m spacy download en_core_web_sm
+# python -m spacy download zh_core_web_sm
+
+# Existing requirements (from original requirements.txt)
+numpy>=1.21.0
+pandas>=1.3.0
+matplotlib>=3.5.0
+seaborn>=0.11.0
+networkx>=2.6.0
+plotly>=5.0.0
+scikit-learn>=1.0.0
+scipy>=1.7.0
+
+# Optional: NLTK for fallback processing
+nltk>=3.7
+
+# Optional: jieba for Chinese text processing fallback
+jieba>=0.42.1
+
+# Development and testing
+pytest>=6.0.0
+pytest-cov>=3.0.0
+
+# Documentation
+sphinx>=4.0.0
+sphinx-rtd-theme>=1.0.0
+
+# Jupyter for analysis notebooks
+jupyter>=1.0.0
+ipykernel>=6.0.0
+
+# Data handling
+tqdm>=4.62.0
+pathlib2>=2.3.6; python_version < '3.4'

@@ -6,6 +6,7 @@
 """
 
 import logging
+from tqdm import tqdm
 import math
 from collections import Counter, defaultdict
 from dataclasses import dataclass
@@ -151,7 +152,7 @@ class DynamicStopwordDiscoverer:
         
         # 提取词组语料库
         phrase_corpus = []
-        for doc in processed_docs:
+        for doc in tqdm(processed_docs, desc="📄 Processing documents", unit="doc"):
             if doc.phrases:
                 phrase_corpus.append(doc.phrases)
         
@@ -336,7 +337,7 @@ class DynamicStopwordDiscoverer:
             stopwords = self.static_stopwords
         
         filtered_phrases = []
-        for phrase in phrases:
+        for phrase in tqdm(phrases, desc="🔍 Processing phrases", unit="phrase"):
             if phrase not in stopwords:
                 filtered_phrases.append(phrase)
         

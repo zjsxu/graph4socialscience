@@ -327,9 +327,9 @@ def test_fixed_visualization():
         print(f"❌ 导入失败: {e}")
         return
     
-    # 设置测试参数
-    input_dir = "/Users/zhangjingsen/Desktop/python/graph4socialscience/toc_doc"
-    output_dir = "/Users/zhangjingsen/Desktop/python/graph4socialscience/hajimi/四周目"
+    # 设置测试参数 - use relative paths for portability
+    input_dir = "test_input"
+    output_dir = "test_output"
     
     if not os.path.exists(input_dir):
         print(f"❌ 输入目录不存在: {input_dir}")

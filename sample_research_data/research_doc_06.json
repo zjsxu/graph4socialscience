@@ -1,9 +1,0 @@
-{
-  "segment_id": "research_006",
-  "title": "Graph Neural Networks",
-  "level": 1,
-  "order": 6,
-  "text": "Graph neural networks extend deep learning to graph-structured data. Message passing algorithms aggregate information from neighboring nodes. Graph convolutional networks learn node representations for tasks like node classification and link prediction.",
-  "state": "TX",
-  "language": "english"
-}

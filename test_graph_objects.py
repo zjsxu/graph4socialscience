@@ -24,8 +24,8 @@ def test_graph_object_creation():
     app = ResearchPipelineCLI()
     
     # Set test data paths
-    input_dir = '/Users/zhangjingsen/Desktop/python/graph4socialscience/toc_doc'
-    output_dir = '/Users/zhangjingsen/Desktop/python/graph4socialscience/test_graph_objects_output'
+    input_dir = 'test_input'
+    output_dir = 'test_output'
     
     app.input_directory = input_dir
     app.output_dir = output_dir

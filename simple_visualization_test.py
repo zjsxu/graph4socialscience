@@ -78,7 +78,7 @@ def test_simple_visualization():
     pos = test_spring_layout_progress()
     
     # 简化的可视化生成
-    output_dir = "/Users/zhangjingsen/Desktop/python/graph4socialscience/hajimi/haniumoa"
+    output_dir = "test_output"
     os.makedirs(output_dir, exist_ok=True)
     
     with tqdm(total=5, desc="🎨 简化可视化", unit="step") as pbar:

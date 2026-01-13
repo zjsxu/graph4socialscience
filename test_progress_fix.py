@@ -60,7 +60,7 @@ def test_progress_bars():
     
     # 创建测试数据
     test_dir = create_minimal_test_data()
-    output_dir = "/Users/zhangjingsen/Desktop/python/graph4socialscience/hajimi/haniumoa"
+    output_dir = "test_output"
     os.makedirs(output_dir, exist_ok=True)
     
     try:

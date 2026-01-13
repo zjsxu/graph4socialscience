@@ -9,6 +9,7 @@ import re
 import string
 from typing import Dict, List, Any, Optional
 import logging
+from tqdm import tqdm
 from dataclasses import dataclass
 
 # 导入NLTK和jieba
@@ -604,7 +605,7 @@ class TextProcessor:
         total_original_length = 0
         total_cleaned_length = 0
         
-        for doc in processed_docs:
+        for doc in tqdm(processed_docs, desc="📄 Processing documents", unit="doc"):
             lang = doc.processing_metadata.get('language', 'unknown')
             language_counts[lang] = language_counts.get(lang, 0) + 1
             

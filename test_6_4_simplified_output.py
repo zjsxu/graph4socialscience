@@ -16,8 +16,8 @@ def test_6_4_simplified_output():
     print()
     
     # 设置测试参数
-    input_dir = "/Users/zhangjingsen/Desktop/python/graph4socialscience/toc_doc"
-    output_dir = "/Users/zhangjingsen/Desktop/python/graph4socialscience/test_6_4_output"
+    input_dir = "test_input"
+    output_dir = "test_output"
     
     if not os.path.exists(input_dir):
         print(f"❌ 输入目录不存在: {input_dir}")

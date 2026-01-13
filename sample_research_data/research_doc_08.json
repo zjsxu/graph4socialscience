@@ -1,9 +1,0 @@
-{
-  "segment_id": "research_008",
-  "title": "Text Mining and Information Extraction",
-  "level": 2,
-  "order": 8,
-  "text": "Text mining extracts valuable information from unstructured text documents. Topic modeling techniques like Latent Dirichlet Allocation discover thematic structures. Sentiment analysis determines emotional polarity in text using machine learning classifiers.",
-  "state": "FL",
-  "language": "english"
-}

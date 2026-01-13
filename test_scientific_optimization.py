@@ -17,8 +17,8 @@ def test_scientific_optimization():
     print()
     
     # Set test parameters
-    input_dir = "/Users/zhangjingsen/Desktop/python/graph4socialscience/toc_doc"
-    output_dir = "/Users/zhangjingsen/Desktop/python/graph4socialscience/scientific_test_output"
+    input_dir = "test_input"
+    output_dir = "test_output"
     
     if not os.path.exists(input_dir):
         print(f"❌ Input directory not found: {input_dir}")
