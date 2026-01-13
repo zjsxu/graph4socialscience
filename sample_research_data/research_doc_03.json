@@ -1,0 +1,9 @@
+{
+  "segment_id": "research_003",
+  "title": "Natural Language Processing Methods",
+  "level": 2,
+  "order": 3,
+  "text": "Natural language processing combines computational linguistics with machine learning. Text preprocessing includes tokenization, stemming, and stopword removal. Named entity recognition identifies people, organizations, and locations in text documents.",
+  "state": "NY",
+  "language": "english"
+}

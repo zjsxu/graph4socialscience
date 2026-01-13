@@ -1,0 +1,9 @@
+{
+  "segment_id": "research_007",
+  "title": "Network Analysis Techniques",
+  "level": 2,
+  "order": 7,
+  "text": "Social network analysis studies relationships between entities using graph theory. Centrality measures identify important nodes in networks. Community detection algorithms discover clusters of densely connected nodes in large networks.",
+  "state": "FL",
+  "language": "english"
+}

@@ -1,133 +1,166 @@
-# Graph4SocialScience - 语义增强共词网络分析管线
+# Graph4SocialScience - 语义增强型共词网络构建与结构分析
 
-Group Repo for the OpenRank Contest, for the group "graph4socialscience", by Prof. Zixi Chen, Jingsen Zhang, Zeqiang Wang.
+[![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![EasyGraph](https://img.shields.io/badge/EasyGraph-Compatible-orange.svg)](https://github.com/easy-graph/Easy-Graph)
+[![OpenRank](https://img.shields.io/badge/OpenRank-Contest-red.svg)](https://www.openrank.cn/)
 
-## 概述
+> **OpenRank Contest Project** by **graph4socialscience** team  
+> Prof. Zixi Chen, Jingsen Zhang, Zeqiang Wang
 
-本项目实现了一个完整的语义增强共词网络分析管线，采用"总图优先，州级激活"的两阶段构建策略。系统以词组/短语为节点单位，通过动态停词发现和确定性布局确保可复现的网络分析结果。
+## 📖 概述
 
-## 主要特性
+本项目围绕**全文本共词网络（co-word / co-occurrence network）**的构建与结构分析方法展开，重点研究在政策/法规类文本中，不同共词网络构建与增强策略如何影响网络的整体结构特征、主题可解释性以及跨地区比较的可行性。
 
-- **总图优先架构**: 先构建全局共现网络，再通过激活掩码提取州级子图
-- **词组级节点**: 使用2-gram和短语作为网络节点，提供更有意义的语义表示
-- **动态停词发现**: 自动识别高频低区分度词组，提升网络质量
-- **确定性布局**: 使用固定种子确保可复现的网络可视化
-- **可追溯处理**: 完整记录处理过程，支持学术研究需求
-- **EasyGraph集成**: 与EasyGraph框架兼容，支持图融合分析
-- **进度可视化**: 全流程tqdm进度条显示
-- **图数据导出**: 完整的节点、边和处理参数导出功能
+在技术实现上，项目采用**"总图优先，州级激活"**的两阶段构建思路：先在全部文档上构建统一节点空间的全局共词网络，再基于州/文档标签激活子图，以保证跨州网络在节点语义空间和结构指标上的可比性。相关代码实现主要作为实验与对比研究的支撑工具，而非研究目标本身。
 
-## 系统架构
+## ✨ 主要特性
+
+### 🔬 研究导向的总图优先架构
+在统一词表与节点空间下构建全局共词网络，为跨州/跨文档结构比较提供基础
+
+### 📝 词组/短语级节点建模
+以 2-gram 与短语而非单词作为节点，降低全文本场景下网络碎裂问题，提升主题可解释性
+
+### 🔍 动态停词发现机制
+结合 TF-IDF 等信息量指标，识别高频低区分度的"结构性噪声词组"，用于对比不同清洗策略对网络结构的影响
+
+### 🎯 可复现的网络布局与分析
+通过确定性布局、固定随机种子与布局缓存，确保不同构图策略下的网络结构可重复对比
+
+### 🔗 EasyGraph / OpenRank 兼容输出
+所生成的共词网络可直接作为 EasyGraph / OpenRank 中多图融合实验的基础图层
+
+### 📊 完整实验过程记录
+节点、边、停词、参数与中间结果均可导出，用于学术分析与复现实验
+
+### 🎨 交互式可视化支持
+- **Matplotlib**: 高质量静态网络可视化，适合学术发表
+- **Plotly**: 交互式网络探索，支持缩放、悬停、统计仪表板
+
+## 🏗️ 系统架构（实验流程概览）
 
 ```
-TOC JSON输入 → 文本预处理 → 词组抽取 → 动态停词发现 → 总图构建 → 州级子图激活 → 确定性布局 → 网络分析 → EasyGraph兼容输出
+TOC JSON 输入
+    ↓
+文本预处理
+    ↓
+词组/短语抽取
+    ↓
+动态停词识别
+    ↓
+全局共词网络构建
+    ↓
+州级子图激活
+    ↓
+结构指标计算与可视化
+    ↓
+EasyGraph / OpenRank 兼容输出
 ```
 
-## 安装
+> **注**：上述流程用于支持不同构图策略的对比实验，而非作为最终研究结论本身。
+
+## 🚀 安装
 
 ### 环境要求
 
-- Python 3.8+
-- EasyGraph >= 1.0
-- NLTK >= 3.6
-- jieba >= 0.42 (中文文本处理)
-- tqdm >= 4.0 (进度条显示)
-- networkx >= 2.5
-- matplotlib >= 3.3
-- numpy >= 1.19
-- pandas >= 1.2
+- **Python 3.8+**
+- **EasyGraph >= 1.0**
+- **NLTK >= 3.6**
+- **jieba >= 0.42**（中文文本处理）
+- **tqdm >= 4.0**
+- **networkx >= 2.5**
+- **matplotlib >= 3.3**
+- **plotly >= 5.0**（交互式可视化）
+- **numpy >= 1.19**
+- **pandas >= 1.2**
 
 ### 安装步骤
 
-1. 克隆项目
-```bash
-git clone https://github.com/zjsxu/graph4socialscience.git
-cd graph4socialscience
-```
+1. **克隆项目**
+   ```bash
+   git clone https://github.com/zjsxu/graph4socialscience.git
+   cd graph4socialscience
+   ```
 
-2. 安装依赖
-```bash
-pip install -r requirements.txt
-```
+2. **安装依赖**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-3. 安装EasyGraph (从本地Easy-Graph目录)
-```bash
-cd Easy-Graph
-pip install -e .
-cd ..
-```
+3. **安装 EasyGraph（本地版本）**
+   ```bash
+   cd Easy-Graph
+   pip install -e .
+   cd ..
+   ```
 
-4. 下载NLTK数据
-```bash
-python -c "import nltk; nltk.download('punkt'); nltk.download('stopwords')"
-```
+4. **下载 NLTK 数据**
+   ```bash
+   python -c "import nltk; nltk.download('punkt'); nltk.download('stopwords')"
+   ```
 
-## 快速开始
+## 🎯 快速开始
 
 ### 基本使用
 
-运行主程序：
-
 ```bash
 python complete_usage_guide.py
 ```
 
-程序提供以下功能：
+该程序用于复现实验流程，支持以下研究相关操作：
 
-1. **文本预处理** - 清理和标准化输入文本
-2. **词组抽取** - 提取有意义的2-gram和短语
-3. **动态停词发现** - 自动识别需要过滤的高频词组
-4. **全局图构建** - 构建完整的共现网络
-5. **子图激活** - 按州提取特定子图
-6. **网络可视化** - 生成可读的主题网络图
-7. **图数据导出** - 导出完整的图结构和数据
+- **文本预处理**（规范化全文本输入）
+- **词组/短语抽取**（构图节点候选）
+- **动态停词识别**（对比不同清洗策略）
+- **全局共词网络构建**
+- **州级子图激活与结构比较**
+- **网络结构可视化**（Matplotlib + Plotly）
+- **图数据与实验参数导出**
 
 ### 使用方法
 
-#### 方法1: 交互式菜单
-
+#### 方法 1：交互式实验流程
 ```bash
 python complete_usage_guide.py
 ```
 
-按照菜单提示依次执行：
-1. 选择输入目录 (1.1)
-2. 设置输出目录 (1.2)
-3. 清理文本 (2.1)
-4. 提取词组 (3.2)
-5. 构建全局图 (4.1)
-6. 激活子图 (5.1)
-7. 生成可视化 (6.1)
-8. 导出结果 (6.3)
+按照菜单顺序执行典型研究流程：
+1. 选择输入目录（1.1）
+2. 设置输出目录（1.2）
+3. 文本清洗（2.1）
+4. 词组抽取（3.2）
+5. 构建全局共词网络（4.1）
+6. 激活州级子图（5.1）
+7. 生成网络可视化（6.1 - Matplotlib，6.2 - Plotly）
+8. 导出实验结果（6.4）
 
-#### 方法2: 自动化脚本
-
+#### 方法 2：自动化实验脚本
 ```bash
-# 使用预配置路径自动运行
+# 使用预配置路径
 python run_pipeline_with_memo_data.py
 
-# 或使用快速设置
+# 快速设置
 python quick_pipeline_setup.py
 ```
 
-#### 方法3: 使用示例数据
-
+#### 方法 3：示例数据演示
 ```bash
-# 运行演示
+# 完整演示
 python demo.py
 
-# 或使用简化指南
+# 简化演示
 python simple_usage_guide.py
 ```
 
 ### 数据格式
 
-输入数据应为TOC JSON格式：
+输入数据为 TOC 分段后的全文本 JSON，每条记录对应一个共现窗口：
 
 ```json
 {
   "segment_id": "seg_001",
-  "title": "Introduction", 
+  "title": "Introduction",
   "level": 1,
   "order": 1,
   "text": "This is sample text for analysis.",
@@ -135,74 +168,62 @@ python simple_usage_guide.py
 }
 ```
 
-### 输出结果
+### 输出结果（用于分析与复现）
 
-- **清理文本**: `output_dir/cleaned_text/`
-- **词组数据**: `output_dir/phrases/`
-- **停词列表**: `output_dir/stopwords/`
-- **全局图**: `output_dir/global_graph/`
-- **子图**: `output_dir/subgraphs/`
-- **可视化**: `output_dir/visualizations/`
-- **图分析**: `output_dir/graph_analysis/` (功能6.4)
+```
+output_dir/
+├── cleaned_text/           # 清洗文本
+├── phrases/               # 词组数据
+├── stopwords/             # 动态停词表
+├── global_graph/          # 全局共词网络
+├── subgraphs/             # 州级子图
+├── visualizations/        # 网络可视化结果
+└── graph_analysis/        # 结构分析结果
+```
 
-## 项目结构
+## 📁 项目结构
 
 ```
 graph4socialscience/
-├── complete_usage_guide.py    # 主程序入口
-├── semantic_coword_pipeline/   # 核心管线模块
-│   ├── core/                  # 核心功能
-│   ├── processors/            # 数据处理器
-│   └── analyzers/             # 网络分析器
-├── tests/                     # 测试模块
-├── config/                    # 配置文件
-├── docs/                      # 文档
-├── data/                      # 示例数据
-├── Easy-Graph/                # EasyGraph框架
-└── requirements.txt           # 依赖列表
+├── complete_usage_guide.py          # 主程序入口
+├── plotly_visualization_generator.py # Plotly交互式可视化
+├── semantic_coword_pipeline/         # 核心管线模块
+│   ├── core/                        # 核心功能
+│   ├── processors/                  # 数据处理器
+│   └── analyzers/                   # 网络分析器
+├── tests/                           # 测试模块
+├── config/                          # 配置文件
+├── docs/                            # 文档
+├── data/                            # 示例数据
+├── Easy-Graph/                      # EasyGraph框架
+└── requirements.txt                 # 依赖列表
 ```
 
-## 功能详解
+## 🔬 功能说明（研究视角）
 
 ### 1. 文本预处理
-- 清理HTML标签和特殊字符
-- 标准化空白字符
-- 保留文档结构信息
+为全文本共词分析提供统一、可比较的输入基础。
 
 ### 2. 词组抽取
-- 基于NLTK的2-gram提取
-- 频率过滤和质量评估
-- 支持中英文混合处理
+比较"单词节点"与"词组节点"对网络结构与主题表达的影响。
 
 ### 3. 动态停词发现
-- 基于TF-IDF的低区分度词组识别
-- 自适应阈值设定
-- 保留语义重要词组
+研究不同停词策略对网络稀疏性、连通性与社区结构的影响。
 
 ### 4. 全局图构建
-- 共现矩阵计算
-- 边权重标准化
-- 社区检测和中心性分析
-- 密度过滤（从98%降至5%）
+在统一节点空间下构建共词网络，作为跨州分析的结构基底。
 
 ### 5. 子图激活
-- 基于州标签的节点激活
-- 保持全局图结构一致性
-- 支持孤立节点保留
+在保持节点空间一致的前提下，对不同州/文档进行结构对比。
 
 ### 6. 网络可视化
-- 社区感知布局
-- 角色区分显示（核心/外围）
-- 选择性边渲染
-- 高分辨率导出（300 DPI）
+- **静态可视化（Matplotlib）**：高质量学术图表，适合论文发表
+- **交互式可视化（Plotly）**：支持缩放、悬停、统计仪表板，便于探索性分析
 
-### 7. 图数据导出 (功能6.4)
-- 完整节点属性导出
-- 边权重和关系导出
-- 处理参数记录
-- 支持全局图和子图选择
+### 7. 图数据导出
+用于后续 EasyGraph / OpenRank 的多图融合与扩展实验。
 
-## 测试
+## 🧪 测试
 
 运行测试套件：
 
@@ -211,27 +232,32 @@ graph4socialscience/
 pytest
 
 # 测试特定功能
-python test_6_4_with_toc_doc.py  # 测试6.4功能
-python final_visualization_test.py  # 测试可视化
-python test_structural_improvements.py  # 测试结构改进
+python test_plotly_integration.py      # 测试Plotly集成
+python final_visualization_test.py     # 测试可视化
+python test_structural_improvements.py # 测试结构改进
 ```
 
-## 性能优化
+## 🎯 项目定位说明
 
-- **边处理优化**: 1000x性能提升
-- **内存管理**: 大图处理优化
-- **进度显示**: 实时处理状态
-- **批量处理**: 支持大规模数据
+本仓库的核心贡献在于：
 
-## 许可证
+**系统比较不同统计与语义增强策略下的全文本共词网络构建方法，并分析这些方法对网络结构与可解释性的影响。**
+
+代码实现仅作为研究实验的支撑工具。
+
+## 📄 许可证
 
 MIT License
 
-## 贡献
+## 📞 联系方式
 
-欢迎提交Issue和Pull Request来改进项目。
+- **GitHub Issues**: [https://github.com/zjsxu/graph4socialscience/issues](https://github.com/zjsxu/graph4socialscience/issues)
+- **项目团队**: Prof. Zixi Chen, Jingsen Zhang, Zeqiang Wang
 
-## 联系方式
+---
 
-- GitHub Issues: https://github.com/zjsxu/graph4socialscience/issues
-- 项目团队: Prof. Zixi Chen, Jingsen Zhang, Zeqiang Wang
+<div align="center">
+
+**🏆 OpenRank Contest 2024 | Graph4SocialScience Team**
+
+</div>

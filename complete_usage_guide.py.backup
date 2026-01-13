@@ -213,11 +213,10 @@ class ResearchPipelineCLI:
         print("   5.3 Export Subgraph Data")
         print()
         print("6. VISUALIZATION & EXPORT")
-        print("   6.1 Generate Deterministic Visualizations (Matplotlib)")
-        print("   6.2 Generate Interactive Visualizations (Plotly)")
-        print("   6.3 View Output Image Paths")
-        print("   6.4 Export Complete Results")
-        print("   6.5 View Graph Nodes & Data Details")
+        print("   6.1 Generate Scientific Visualizations")
+        print("   6.2 View Output Image Paths")
+        print("   6.3 Export Complete Results")
+        print("   6.4 View Graph Nodes & Data Details")
         print()
         print("🔧 SCIENTIFIC CONTROLS:")
         print("   S.1 Configure Scientific Parameters")
@@ -3136,209 +3135,7 @@ class ResearchPipelineCLI:
             print(f"❌ Visualization generation failed: {e}")
             import traceback
             traceback.print_exc()
-
-    def generate_plotly_visualizations(self):
-        """Generate interactive Plotly visualizations"""
-        if not self.validate_pipeline_step('subgraphs_activated', "Please activate subgraphs first (step 5.1)"):
-            return
-        
-        print("\n🎨 INTERACTIVE PLOTLY VISUALIZATION GENERATION")
-        print("-" * 60)
-        print("🌐 Generating interactive network visualizations with Plotly")
-        print(f"🌱 Random seed: {self.reproducibility_config['random_seed']}")
-        
-        try:
-            # Import Plotly visualization generator
-            from plotly_visualization_generator import PlotlyNetworkVisualizer
-            
-            # Set output directory for Plotly visualizations
-            output_dir = "/Users/zhangjingsen/Desktop/python/graph4socialscience/hajimi/七周目"
-            os.makedirs(output_dir, exist_ok=True)
-            
-            print(f"📁 Output directory: {output_dir}")
-            
-            # Initialize Plotly visualizer
-            visualizer = PlotlyNetworkVisualizer(random_seed=self.reproducibility_config['random_seed'])
-            
-            # Create visualizations directory
-            viz_dir = os.path.join(output_dir, "plotly_visualizations")
-            os.makedirs(viz_dir, exist_ok=True)
-            
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            
-            # Check if we have the required graph objects
-            if not hasattr(self, 'global_graph_object') or self.global_graph_object is None:
-                print("❌ Global graph object not found. Please build global graph first (step 4.1)")
-                return
-            
-            graph = self.global_graph_object
-            positions = self.global_layout_positions
-            
-            print(f"📊 Graph statistics: {graph.number_of_nodes()} nodes, {graph.number_of_edges()} edges")
-            
-            # 1. Create interactive global network visualization
-            print("\n🌐 Creating interactive global network...")
-            global_fig = visualizer.create_interactive_network(
-                graph, positions, 
-                title=f"Interactive Global Co-occurrence Network (Seed: {self.reproducibility_config['random_seed']})"
-            )
-            
-            # Save HTML version (interactive)
-            global_html_path = os.path.join(viz_dir, f"global_network_interactive_{timestamp}.html")
-            visualizer.save_visualization(global_fig, global_html_path, format='html')
-            print(f"✅ Saved interactive version: {os.path.basename(global_html_path)}")
-            
-            # Save PNG version (static) if kaleido is available
-            try:
-                global_png_path = os.path.join(viz_dir, f"global_network_static_{timestamp}.png")
-                visualizer.save_visualization(global_fig, global_png_path, format='png')
-                print(f"✅ Saved static version: {os.path.basename(global_png_path)}")
-            except Exception as e:
-                print(f"⚠️ PNG export failed (kaleido may not be installed): {e}")
-            
-            # 2. Create network statistics dashboard
-            print("\n📊 Creating network statistics dashboard...")
-            communities = nx.get_node_attributes(graph, 'community')
-            dashboard_fig = visualizer.create_network_statistics_dashboard(graph, communities)
-            
-            dashboard_html_path = os.path.join(viz_dir, f"network_dashboard_{timestamp}.html")
-            visualizer.save_visualization(dashboard_fig, dashboard_html_path, format='html')
-            print(f"✅ Saved dashboard: {os.path.basename(dashboard_html_path)}")
-            
-            # 3. Create state subgraph visualizations
-            print("\n🗺️ Creating state subgraph visualizations...")
-            if hasattr(self, 'state_subgraph_objects') and self.state_subgraph_objects:
-                
-                for state, subgraph in self.state_subgraph_objects.items():
-                    if subgraph.number_of_nodes() > 0:
-                        print(f"   🎨 Processing state: {state}")
-                        
-                        # Use global positions for consistency
-                        subgraph_positions = {node: positions[node] for node in subgraph.nodes() 
-                                            if node in positions}
-                        
-                        # Create subgraph visualization
-                        subgraph_fig = visualizer.create_interactive_network(
-                            subgraph, subgraph_positions,
-                            title=f"State {state} Thematic Network ({subgraph.number_of_nodes()} nodes, {subgraph.number_of_edges()} edges)"
-                        )
-                        
-                        # Save subgraph
-                        subgraph_html_path = os.path.join(viz_dir, f"state_{state}_network_{timestamp}.html")
-                        visualizer.save_visualization(subgraph_fig, subgraph_html_path, format='html')
-                        print(f"      ✅ Saved: state_{state}_network_{timestamp}.html")
-            
-            # 4. Create layout comparison visualizations
-            print("\n🔄 Creating layout comparisons...")
-            layout_types = ['spring', 'circular', 'kamada_kawai']
-            
-            for layout_type in layout_types:
-                try:
-                    print(f"   🎯 Creating {layout_type} layout...")
-                    layout_positions = visualizer.create_network_layout(graph, layout_type)
-                    
-                    layout_fig = visualizer.create_interactive_network(
-                        graph, layout_positions,
-                        title=f"Global Network - {layout_type.title()} Layout"
-                    )
-                    
-                    layout_html_path = os.path.join(viz_dir, f"global_network_{layout_type}_{timestamp}.html")
-                    visualizer.save_visualization(layout_fig, layout_html_path, format='html')
-                    print(f"      ✅ Saved: global_network_{layout_type}_{timestamp}.html")
-                    
-                except Exception as e:
-                    print(f"      ⚠️ {layout_type} layout failed: {e}")
-            
-            # Generate summary report
-            print("\n📋 Generating visualization summary...")
-            
-            summary_report = f"""# Plotly Interactive Network Visualization Report
-
-## Generation Time
-{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-
-## Network Statistics
-- Nodes: {graph.number_of_nodes()}
-- Edges: {graph.number_of_edges()}
-- Density: {nx.density(graph):.4f}
-- Communities: {len(set(communities.values())) if communities else 0}
-
-## Generated Visualizations
-
-### Interactive Network Graphs
-- `global_network_interactive_{timestamp}.html` - Main interactive network
-- `network_dashboard_{timestamp}.html` - Network statistics dashboard
-
-### State Subgraphs
-"""
-            
-            if hasattr(self, 'state_subgraph_objects'):
-                for state in self.state_subgraph_objects.keys():
-                    summary_report += f"- `state_{state}_network_{timestamp}.html` - {state} state network\n"
-            
-            summary_report += f"""
-### Layout Comparisons
-- `global_network_spring_{timestamp}.html` - Spring layout
-- `global_network_circular_{timestamp}.html` - Circular layout  
-- `global_network_kamada_kawai_{timestamp}.html` - Kamada-Kawai layout
-
-## Features
-- 🎯 Interactive zoom, pan, and hover functionality
-- 📊 Rich hover tooltips with node/edge details
-- 🎨 Community-based coloring and role-based shapes
-- 📱 Responsive design for mobile devices
-- 💾 High-resolution static exports (when kaleido available)
-
-## Usage
-1. Open HTML files in a web browser
-2. Use mouse to zoom, pan, and hover for details
-3. Click legend items to hide/show communities
-4. Dashboard provides comprehensive network analysis
-
-## Advantages over Matplotlib
-- Interactive exploration capabilities
-- Better visual clarity and aesthetics
-- Mobile-friendly responsive design
-- Rich hover information
-- Multiple export formats
-"""
-            
-            summary_path = os.path.join(viz_dir, f"plotly_visualization_summary_{timestamp}.md")
-            with open(summary_path, 'w', encoding='utf-8') as f:
-                f.write(summary_report)
-            
-            print(f"✅ Summary report: {os.path.basename(summary_path)}")
-            
-            print(f"\n🎉 Plotly visualization generation completed!")
-            print(f"📁 All files saved in: {viz_dir}")
-            print("🌐 Open HTML files in your browser to view interactive visualizations")
-            
-            # Update visualization paths for tracking
-            if not hasattr(self, 'plotly_visualization_paths'):
-                self.plotly_visualization_paths = {}
-            
-            self.plotly_visualization_paths['global_interactive'] = global_html_path
-            self.plotly_visualization_paths['dashboard'] = dashboard_html_path
-            self.plotly_visualization_paths['summary'] = summary_path
-            
-            # List generated files
-            print("\n📊 Generated files:")
-            for file in os.listdir(viz_dir):
-                if file.endswith(('.html', '.png', '.md')):
-                    file_path = os.path.join(viz_dir, file)
-                    file_size = os.path.getsize(file_path)
-                    print(f"   📄 {file} ({file_size:,} bytes)")
-            
-        except ImportError:
-            print("❌ Plotly visualization generator not available")
-            print("   Please ensure plotly_visualization_generator.py is in the current directory")
-            print("   And that Plotly is installed: pip install plotly kaleido")
-        except Exception as e:
-            print(f"❌ Plotly visualization generation failed: {e}")
-            import traceback
-            traceback.print_exc()
-
-    def view_output_image_paths(self):
+\n\n    def view_output_image_paths(self):
         """View output image paths clearly"""
         if not hasattr(self, 'visualization_paths') or not self.visualization_paths:
             print("⚠️ No visualizations generated yet. Use step 6.1 first.")
@@ -3808,14 +3605,12 @@ class ResearchPipelineCLI:
             
             # Visualization & Export
             elif choice == "6.1":
-                self.generate_deterministic_visualizations()
+                self.generate_scientific_visualizations()
             elif choice == "6.2":
-                self.generate_plotly_visualizations()
-            elif choice == "6.3":
                 self.view_output_image_paths()
-            elif choice == "6.4":
+            elif choice == "6.3":
                 self.export_complete_results()
-            elif choice == "6.5":
+            elif choice == "6.4":
                 self.view_graph_nodes_and_data()
             
             # Scientific Controls

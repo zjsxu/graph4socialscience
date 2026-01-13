@@ -8,6 +8,7 @@ import os
 import sys
 import time
 from datetime import datetime
+import networkx as nx
 
 def test_semantic_corrections():
     """测试语义结构修正的所有模块"""
@@ -129,7 +130,8 @@ def test_semantic_corrections():
             total_reweighted = 0
             
             for state, subgraph in cli.state_subgraph_objects.items():
-                isolated_count = len(list(subgraph.nodes())) - len(max(subgraph.subgraph(c) for c in subgraph.nodes() if subgraph.degree(c) > 0) if any(subgraph.degree(n) > 0 for n in subgraph.nodes()) else [])
+                # 计算孤立节点数
+                isolated_count = len(list(nx.isolates(subgraph)))
                 total_isolated += isolated_count
                 
                 # 检查重新加权的边

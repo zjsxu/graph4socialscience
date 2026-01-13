@@ -1,0 +1,9 @@
+{
+  "segment_id": "research_001",
+  "title": "Machine Learning Fundamentals",
+  "level": 1,
+  "order": 1,
+  "text": "Machine learning algorithms enable computers to learn patterns from data without explicit programming. Supervised learning uses labeled datasets to train models for prediction tasks. Unsupervised learning discovers hidden patterns in unlabeled data through clustering and dimensionality reduction techniques.",
+  "state": "CA",
+  "language": "english"
+}

@@ -1,0 +1,9 @@
+{
+  "segment_id": "research_002",
+  "title": "Deep Learning Applications",
+  "level": 2,
+  "order": 2,
+  "text": "Deep neural networks have revolutionized computer vision and natural language processing. Convolutional neural networks excel at image recognition tasks. Recurrent neural networks and transformers process sequential data for language modeling and machine translation applications.",
+  "state": "CA",
+  "language": "english"
+}
