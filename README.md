@@ -82,6 +82,44 @@ python complete_usage_guide.py
 6. **网络可视化** - 生成可读的主题网络图
 7. **图数据导出** - 导出完整的图结构和数据
 
+### 使用方法
+
+#### 方法1: 交互式菜单
+
+```bash
+python complete_usage_guide.py
+```
+
+按照菜单提示依次执行：
+1. 选择输入目录 (1.1)
+2. 设置输出目录 (1.2)
+3. 清理文本 (2.1)
+4. 提取词组 (3.2)
+5. 构建全局图 (4.1)
+6. 激活子图 (5.1)
+7. 生成可视化 (6.1)
+8. 导出结果 (6.3)
+
+#### 方法2: 自动化脚本
+
+```bash
+# 使用预配置路径自动运行
+python run_pipeline_with_memo_data.py
+
+# 或使用快速设置
+python quick_pipeline_setup.py
+```
+
+#### 方法3: 使用示例数据
+
+```bash
+# 运行演示
+python demo.py
+
+# 或使用简化指南
+python simple_usage_guide.py
+```
+
 ### 数据格式
 
 输入数据应为TOC JSON格式：

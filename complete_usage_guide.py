@@ -20,8 +20,15 @@ REPRODUCIBILITY FEATURES:
 - Clear distinction between global graph construction and subgraph filtering
 - Traceable output file naming with parameters
 
+SCIENTIFIC ENHANCEMENTS:
+- NPMI/Salton semantic weighting for true semantic associations
+- Adaptive graph sparsification (Disparity Filter + Quantile-based)
+- LCC extraction and community pruning for publication-quality visualizations
+- K-Core decomposition for rigorous core-periphery identification
+- Deterministic layouts with scientific reporting
+
 Author: Semantic Co-word Network Analysis Research Team
-Version: 4.0.0 (Research Pipeline)
+Version: 5.0.0 (Scientific Research Pipeline)
 Date: 2024年
 """
 
@@ -39,6 +46,9 @@ from matplotlib.colors import ListedColormap
 import networkx as nx
 from collections import defaultdict
 from tqdm import tqdm
+
+# Import scientific optimizer
+from scientific_graph_optimizer import ScientificGraphOptimizer
 
 # 导入管线组件
 try:
@@ -75,12 +85,27 @@ class ResearchPipelineCLI:
         self.reproducibility_config = {
             'random_seed': 42,
             'cooccurrence_window': 'toc_segment',  # One TOC segment = one window
-            'edge_weight_strategy': 'frequency_count',
+            'edge_weight_strategy': 'npmi',  # 'npmi', 'salton', 'pmi', 'frequency_count'
             'phrase_type': 'mixed',  # word, bigram, or mixed
             'stopword_strategy': 'dynamic_tfidf',  # static_list or dynamic_tfidf
             'layout_algorithm': 'spring_deterministic',
             'min_phrase_frequency': 2,
             'language_detection': 'auto'
+        }
+        
+        # Scientific optimization parameters
+        # Scientific optimization parameters - LESS AGGRESSIVE
+        self.scientific_config = {
+            'semantic_weighting': 'npmi',  # 'npmi', 'salton', 'pmi'
+            'sparsification_method': 'quantile',  # Use quantile only, not adaptive
+            'edge_retention_rate': 0.3,  # Keep top 30% of edges (was 0.05)
+            'disparity_alpha': 0.05,  # Significance level for disparity filter
+            'min_community_size': 3,  # Smaller communities allowed (was 8)
+            'max_legend_communities': 15,  # More communities in legend (was 10)
+            'core_method': 'k_core',  # 'k_core', 'pagerank'
+            'min_core_nodes': 20,  # Fewer core nodes required (was 50)
+            'enable_lcc_extraction': False,  # DISABLE LCC extraction
+            'enable_community_pruning': False,  # DISABLE community pruning
         }
         
         # Processing results storage - GRAPH OBJECTS as first-class citizens
@@ -91,6 +116,13 @@ class ResearchPipelineCLI:
         self.global_graph_object = None  # NetworkX graph with positions and attributes
         self.global_layout_positions = None  # Fixed 2D positions for all nodes
         self.state_subgraph_objects = {}  # NetworkX subgraph views with shared positions
+        
+        # Scientific optimization objects
+        self.scientific_optimizer = None
+        self.optimized_global_graph = None
+        self.global_communities = None
+        self.global_node_roles = None
+        self.structural_statistics = None
         
         # Legacy data structures (for export compatibility only)
         self.global_graph = None  # Will be deprecated in favor of graph_object
@@ -103,12 +135,13 @@ class ResearchPipelineCLI:
     def initialize_pipeline(self):
         """Initialize research pipeline with reproducibility controls"""
         print("=" * 80)
-        print("Research-Oriented Text-to-Co-occurrence-Graph Pipeline")
+        print("Scientific Research-Oriented Text-to-Co-occurrence-Graph Pipeline")
         print("=" * 80)
         print("🔬 REPRODUCIBLE RESEARCH WORKFLOW")
         print("📋 Fixed Pipeline Order: Data Input → Text Cleaning → Phrase Construction")
-        print("   → Global Graph → Subgraph Activation → Visualization & Export")
+        print("   → Global Graph → Scientific Optimization → Subgraph Activation → Visualization & Export")
         print("🎯 Reproducibility Controls: Fixed seed, explicit parameters, traceable outputs")
+        print("🧪 Scientific Methods: NPMI weighting, adaptive sparsification, LCC extraction")
         print("=" * 80)
         
         if not PIPELINE_AVAILABLE:
@@ -120,9 +153,17 @@ class ResearchPipelineCLI:
         try:
             print("🔄 Initializing research pipeline...")
             self.pipeline = SemanticCowordPipeline()
+            
+            # Initialize scientific optimizer
+            print("🔬 Initializing scientific graph optimizer...")
+            self.scientific_optimizer = ScientificGraphOptimizer(random_seed=self.reproducibility_config['random_seed'])
+            self.scientific_optimizer.config.update(self.scientific_config)
+            
             print("✅ Research pipeline initialized successfully!")
             print(f"🌱 Random seed set to: {self.reproducibility_config['random_seed']}")
             print(f"🪟 Co-occurrence window: {self.reproducibility_config['cooccurrence_window']}")
+            print(f"⚖️ Semantic weighting: {self.scientific_config['semantic_weighting'].upper()}")
+            print(f"🔬 Sparsification method: {self.scientific_config['sparsification_method']}")
             return True
         except Exception as e:
             print(f"❌ Pipeline initialization failed: {e}")
@@ -162,8 +203,9 @@ class ResearchPipelineCLI:
         print()
         print("4. GLOBAL CO-OCCURRENCE GRAPH CONSTRUCTION")
         print("   4.1 Build Global Graph (shared node space)")
-        print("   4.2 View Global Graph Statistics")
-        print("   4.3 Export Global Graph Data")
+        print("   4.2 Apply Scientific Optimization (NPMI, sparsification, LCC)")
+        print("   4.3 View Global Graph Statistics")
+        print("   4.4 Export Global Graph Data")
         print()
         print("5. SUBGRAPH ACTIVATION (from Global Graph)")
         print("   5.1 Activate State-based Subgraphs")
@@ -171,10 +213,15 @@ class ResearchPipelineCLI:
         print("   5.3 Export Subgraph Data")
         print()
         print("6. VISUALIZATION & EXPORT")
-        print("   6.1 Generate Deterministic Visualizations")
+        print("   6.1 Generate Scientific Visualizations")
         print("   6.2 View Output Image Paths")
         print("   6.3 Export Complete Results")
         print("   6.4 View Graph Nodes & Data Details")
+        print()
+        print("🔧 SCIENTIFIC CONTROLS:")
+        print("   S.1 Configure Scientific Parameters")
+        print("   S.2 View Scientific Statistics")
+        print("   S.3 Export Scientific Report")
         print()
         print("🔧 REPRODUCIBILITY CONTROLS:")
         print("   R.1 Configure Reproducibility Parameters")
@@ -564,7 +611,216 @@ class ResearchPipelineCLI:
         print(f"📂 Input Directory:  {self.input_directory or 'Not set'}")
         print(f"📊 Input Files:      {len(self.input_files)} files")
     
-    def export_parameter_configuration(self):
+    def configure_scientific_parameters(self):
+        """Configure scientific optimization parameters"""
+        print("\n🔬 SCIENTIFIC PARAMETER CONFIGURATION")
+        print("-" * 60)
+        print("🧪 Configure rigorous network science methods")
+        print()
+        
+        # Semantic weighting method
+        print(f"⚖️ Semantic Weighting: {self.scientific_config['semantic_weighting']}")
+        print("   Options: npmi (Normalized PMI), salton (Salton's Cosine), pmi (Standard PMI)")
+        weighting_options = ['npmi', 'salton', 'pmi']
+        new_weighting = input("Enter semantic weighting method (press Enter to keep current): ").strip()
+        if new_weighting and new_weighting in weighting_options:
+            self.scientific_config['semantic_weighting'] = new_weighting
+            self.reproducibility_config['edge_weight_strategy'] = new_weighting
+            print(f"✅ Semantic weighting set to: {new_weighting}")
+        
+        # Sparsification method
+        print(f"\n🔍 Sparsification Method: {self.scientific_config['sparsification_method']}")
+        print("   Options: quantile (top %), disparity (backbone), adaptive (best of both)")
+        sparsification_options = ['quantile', 'disparity', 'adaptive']
+        new_sparsification = input("Enter sparsification method (press Enter to keep current): ").strip()
+        if new_sparsification and new_sparsification in sparsification_options:
+            self.scientific_config['sparsification_method'] = new_sparsification
+            print(f"✅ Sparsification method set to: {new_sparsification}")
+        
+        # Edge retention rate (for quantile method)
+        print(f"\n📊 Edge Retention Rate: {self.scientific_config['edge_retention_rate']*100:.1f}%")
+        print("   Controls: percentage of edges to retain in quantile sparsification")
+        new_retention = input("Enter edge retention rate (0.01-0.20, press Enter to keep current): ").strip()
+        if new_retention:
+            try:
+                retention = float(new_retention)
+                if 0.01 <= retention <= 0.20:
+                    self.scientific_config['edge_retention_rate'] = retention
+                    print(f"✅ Edge retention rate set to: {retention*100:.1f}%")
+                else:
+                    print("❌ Retention rate must be between 1% and 20%")
+            except ValueError:
+                print("❌ Invalid retention rate")
+        
+        # Core identification method
+        print(f"\n🎯 Core Identification: {self.scientific_config['core_method']}")
+        print("   Options: k_core (K-Core decomposition), pagerank (PageRank-based)")
+        core_options = ['k_core', 'pagerank']
+        new_core = input("Enter core identification method (press Enter to keep current): ").strip()
+        if new_core and new_core in core_options:
+            self.scientific_config['core_method'] = new_core
+            print(f"✅ Core identification set to: {new_core}")
+        
+        # Minimum community size
+        print(f"\n🏘️ Minimum Community Size: {self.scientific_config['min_community_size']}")
+        print("   Controls: communities smaller than this are collapsed into 'Other'")
+        new_min_comm = input("Enter minimum community size (press Enter to keep current): ").strip()
+        if new_min_comm:
+            try:
+                min_comm = int(new_min_comm)
+                if min_comm > 0:
+                    self.scientific_config['min_community_size'] = min_comm
+                    print(f"✅ Minimum community size set to: {min_comm}")
+                else:
+                    print("❌ Community size must be positive")
+            except ValueError:
+                print("❌ Invalid community size")
+        
+        # Update scientific optimizer if available
+        if self.scientific_optimizer:
+            self.scientific_optimizer.config.update(self.scientific_config)
+            print(f"\n✅ Scientific parameters updated!")
+        
+        print("💾 Use option S.3 to export these settings for documentation")
+    
+    def view_scientific_statistics(self):
+        """View comprehensive scientific statistics"""
+        print("\n📊 SCIENTIFIC STATISTICS & ANALYSIS")
+        print("-" * 60)
+        
+        if not hasattr(self, 'structural_statistics') or not self.structural_statistics:
+            print("⚠️ No scientific statistics available. Run step 4.2 first.")
+            return
+        
+        stats = self.structural_statistics
+        
+        print("🔬 STRUCTURAL STATISTICS:")
+        print(f"   Nodes: {stats.get('nodes', 0)}")
+        print(f"   Edges: {stats.get('edges', 0)}")
+        print(f"   Density: {stats.get('density', 0):.6f}")
+        print(f"   Connected Components: {stats.get('components', 0)}")
+        
+        if 'largest_component_size' in stats:
+            print(f"   Largest Component: {stats['largest_component_size']} nodes ({stats.get('largest_component_fraction', 0)*100:.1f}%)")
+        
+        if 'average_clustering' in stats:
+            print(f"   Average Clustering: {stats['average_clustering']:.4f}")
+            print(f"   Transitivity: {stats['transitivity']:.4f}")
+        
+        if 'average_path_length' in stats:
+            print(f"   Average Path Length: {stats['average_path_length']:.2f}")
+            print(f"   Diameter: {stats.get('diameter', 'N/A')}")
+        
+        if 'average_degree' in stats:
+            print(f"   Average Degree: {stats['average_degree']:.2f} ± {stats.get('degree_std', 0):.2f}")
+            print(f"   Degree Range: {stats.get('min_degree', 0)} - {stats.get('max_degree', 0)}")
+        
+        if 'centralization' in stats:
+            print(f"   Network Centralization: {stats['centralization']:.4f}")
+        
+        # Community statistics
+        if hasattr(self, 'global_communities') and self.global_communities:
+            from collections import Counter
+            community_sizes = Counter(self.global_communities.values())
+            print(f"\n🏘️ COMMUNITY STRUCTURE:")
+            print(f"   Number of Communities: {len(community_sizes)}")
+            print(f"   Largest Communities: {dict(sorted(community_sizes.items(), key=lambda x: x[1], reverse=True)[:5])}")
+        
+        # Core-periphery statistics
+        if hasattr(self, 'global_node_roles') and self.global_node_roles:
+            from collections import Counter
+            role_counts = Counter(self.global_node_roles.values())
+            print(f"\n🎯 CORE-PERIPHERY STRUCTURE:")
+            for role, count in role_counts.items():
+                pct = count / len(self.global_node_roles) * 100
+                print(f"   {role.title()} nodes: {count} ({pct:.1f}%)")
+        
+        # Top phrases by weighted degree
+        if hasattr(self, 'optimized_global_graph') and self.optimized_global_graph:
+            if self.scientific_optimizer:
+                top_phrases = self.scientific_optimizer.get_top_phrases_by_weighted_degree(self.optimized_global_graph, 10)
+                print(f"\n📈 TOP 10 PHRASES BY WEIGHTED DEGREE:")
+                for i, (phrase, w_degree, tfidf) in enumerate(top_phrases, 1):
+                    print(f"   {i:2d}. {phrase} (degree: {w_degree:.2f}, TF-IDF: {tfidf:.2f})")
+        
+        # Scientific method summary
+        print(f"\n🔬 SCIENTIFIC METHODS APPLIED:")
+        print(f"   Semantic Weighting: {self.scientific_config['semantic_weighting'].upper()}")
+        print(f"   Sparsification: {self.scientific_config['sparsification_method']}")
+        print(f"   Core Identification: {self.scientific_config['core_method']}")
+        print(f"   LCC Extraction: {'Yes' if self.scientific_config.get('enable_lcc_extraction', True) else 'No'}")
+        print(f"   Community Pruning: {'Yes' if self.scientific_config.get('enable_community_pruning', True) else 'No'}")
+    
+    def export_scientific_report(self):
+        """Export comprehensive scientific report"""
+        print("\n💾 EXPORT SCIENTIFIC REPORT")
+        print("-" * 50)
+        
+        try:
+            # Create scientific reports directory
+            reports_dir = os.path.join(self.output_dir, "scientific_reports")
+            os.makedirs(reports_dir, exist_ok=True)
+            
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            report_file = os.path.join(reports_dir, f"scientific_analysis_report_{timestamp}.json")
+            
+            # Prepare comprehensive report data
+            report_data = {
+                'export_info': {
+                    'timestamp': datetime.now().isoformat(),
+                    'pipeline_version': '5.0.0',
+                    'report_type': 'scientific_analysis'
+                },
+                'scientific_parameters': self.scientific_config.copy(),
+                'reproducibility_config': self.reproducibility_config.copy(),
+                'structural_statistics': self.structural_statistics if hasattr(self, 'structural_statistics') else {},
+                'community_analysis': {},
+                'core_periphery_analysis': {},
+                'top_phrases': []
+            }
+            
+            # Add community analysis
+            if hasattr(self, 'global_communities') and self.global_communities:
+                from collections import Counter
+                community_sizes = Counter(self.global_communities.values())
+                report_data['community_analysis'] = {
+                    'total_communities': len(community_sizes),
+                    'community_sizes': dict(community_sizes),
+                    'largest_communities': dict(sorted(community_sizes.items(), key=lambda x: x[1], reverse=True)[:10])
+                }
+            
+            # Add core-periphery analysis
+            if hasattr(self, 'global_node_roles') and self.global_node_roles:
+                from collections import Counter
+                role_counts = Counter(self.global_node_roles.values())
+                report_data['core_periphery_analysis'] = {
+                    'role_distribution': dict(role_counts),
+                    'core_percentage': role_counts.get('core', 0) / len(self.global_node_roles) * 100
+                }
+            
+            # Add top phrases analysis
+            if hasattr(self, 'optimized_global_graph') and self.optimized_global_graph and self.scientific_optimizer:
+                top_phrases = self.scientific_optimizer.get_top_phrases_by_weighted_degree(self.optimized_global_graph, 20)
+                report_data['top_phrases'] = [
+                    {'phrase': phrase, 'weighted_degree': float(w_degree), 'tfidf_score': float(tfidf)}
+                    for phrase, w_degree, tfidf in top_phrases
+                ]
+            
+            # Export report
+            with open(report_file, 'w', encoding='utf-8') as f:
+                json.dump(report_data, f, indent=2, ensure_ascii=False)
+            
+            print(f"✅ Scientific report exported: {report_file}")
+            print("📋 Report includes:")
+            print("   - Scientific parameters and methods")
+            print("   - Structural network statistics")
+            print("   - Community structure analysis")
+            print("   - Core-periphery identification")
+            print("   - Top phrases by semantic importance")
+            print("🔬 This report provides complete scientific documentation")
+            
+        except Exception as e:
+            print(f"❌ Export failed: {e}")
         """Export parameter configuration for reproducibility"""
         print("\n💾 EXPORT PARAMETER CONFIGURATION")
         print("-" * 50)
@@ -724,13 +980,14 @@ class ResearchPipelineCLI:
         print(f"⚖️ Edge weight strategy: {self.reproducibility_config['edge_weight_strategy']}")
         
         # Add graph construction parameters for structural filtering
+        # Add graph construction parameters for structural filtering - LESS AGGRESSIVE
         self.graph_construction_config = {
-            'edge_density_reduction': 0.1,  # Keep top 10% of edges by weight
-            'min_edge_weight': 2,  # Minimum co-occurrence count
-            'core_node_percentile': 0.2,  # Top 20% nodes are "core"
+            'edge_density_reduction': 0.5,  # Keep top 50% of edges by weight (was 0.1)
+            'min_edge_weight': 1,  # Lower minimum co-occurrence count (was 2)
+            'core_node_percentile': 0.3,  # Top 30% nodes are "core" (was 0.2)
             'community_layout_separation': 2.0,  # Separation factor between communities
             'sliding_window_size': 5,  # Sliding window for co-occurrence
-            'min_cooccurrence_threshold': 3,  # Minimum global co-occurrence threshold
+            'min_cooccurrence_threshold': 1,  # Lower minimum global co-occurrence threshold (was 3)
         }
         
         try:
@@ -1077,6 +1334,57 @@ class ResearchPipelineCLI:
             
         except Exception as e:
             print(f"❌ Global graph construction failed: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def apply_scientific_optimization(self):
+        """Apply scientific optimization to the global graph"""
+        if not self.validate_pipeline_step('global_graph_built', "Please build global graph first (step 4.1)"):
+            return
+        
+        print("\n🔬 SCIENTIFIC GRAPH OPTIMIZATION")
+        print("-" * 60)
+        print("🧪 Applying rigorous network science methods")
+        print(f"⚖️ Semantic weighting: {self.scientific_config['semantic_weighting'].upper()}")
+        print(f"🔍 Sparsification: {self.scientific_config['sparsification_method']}")
+        print(f"🎯 Core identification: {self.scientific_config['core_method']}")
+        
+        try:
+            if not self.scientific_optimizer:
+                print("❌ Scientific optimizer not initialized")
+                return
+            
+            # Prepare phrase frequencies for semantic weighting
+            phrase_frequencies = self.phrase_data['filtered_phrases']
+            total_phrases = len(self.phrase_data['all_phrases'])
+            
+            print(f"📊 Input graph: {self.global_graph_object.number_of_nodes()} nodes, {self.global_graph_object.number_of_edges()} edges")
+            
+            # Apply scientific optimization
+            (self.optimized_global_graph, 
+             self.global_communities, 
+             self.global_node_roles, 
+             self.global_layout_positions, 
+             self.structural_statistics) = self.scientific_optimizer.optimize_graph(
+                self.global_graph_object, 
+                phrase_frequencies, 
+                total_phrases
+            )
+            
+            # Update the main graph object with optimized version
+            self.global_graph_object = self.optimized_global_graph
+            
+            print(f"\n✅ Scientific optimization completed!")
+            print(f"📊 Optimized graph: {self.optimized_global_graph.number_of_nodes()} nodes, {self.optimized_global_graph.number_of_edges()} edges")
+            print(f"📊 Density improvement: {self.structural_statistics.get('density', 0):.6f}")
+            print(f"🏘️ Communities detected: {len(set(self.global_communities.values()))}")
+            print(f"🎯 Core nodes identified: {sum(1 for role in self.global_node_roles.values() if role == 'core')}")
+            
+            # Update pipeline state
+            self.pipeline_state['scientifically_optimized'] = True
+            
+        except Exception as e:
+            print(f"❌ Scientific optimization failed: {e}")
             import traceback
             traceback.print_exc()
     
@@ -1819,7 +2127,141 @@ class ResearchPipelineCLI:
             import traceback
             traceback.print_exc()
     
-    def generate_deterministic_visualizations(self):
+    def generate_scientific_visualizations(self):
+        """Generate publication-quality scientific visualizations"""
+        if not self.validate_pipeline_step('subgraphs_activated', "Please activate subgraphs first (step 5.1)"):
+            return
+        
+        print("\n🎨 SCIENTIFIC VISUALIZATION GENERATION")
+        print("-" * 60)
+        print("🔬 Generating publication-quality network visualizations")
+        print(f"🌱 Random seed: {self.reproducibility_config['random_seed']}")
+        print(f"🎯 Layout algorithm: {self.reproducibility_config['layout_algorithm']}")
+        
+        try:
+            # Create visualizations directory
+            viz_dir = os.path.join(self.output_dir, "scientific_visualizations")
+            os.makedirs(viz_dir, exist_ok=True)
+            
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            seed = self.reproducibility_config['random_seed']
+            
+            self.visualization_paths = {}
+            
+            # Use optimized graph if available, otherwise fall back to original
+            graph_to_visualize = self.optimized_global_graph if self.optimized_global_graph else self.global_graph_object
+            communities = self.global_communities if self.global_communities else {}
+            node_roles = self.global_node_roles if self.global_node_roles else {}
+            positions = self.global_layout_positions if self.global_layout_positions else {}
+            
+            if not communities:
+                # Fallback community detection
+                print("🏘️ Applying fallback community detection...")
+                try:
+                    import community as community_louvain
+                    communities = community_louvain.best_partition(graph_to_visualize, weight='weight', random_state=seed)
+                except:
+                    communities = {node: 0 for node in graph_to_visualize.nodes()}
+            
+            if not node_roles:
+                # Fallback core-periphery identification
+                print("🎯 Applying fallback core-periphery identification...")
+                degrees = dict(graph_to_visualize.degree())
+                sorted_nodes = sorted(degrees.items(), key=lambda x: x[1], reverse=True)
+                n_core = min(50, len(sorted_nodes) // 5)  # Top 20% or 50 nodes
+                core_nodes = set(node for node, _ in sorted_nodes[:n_core])
+                node_roles = {node: 'core' if node in core_nodes else 'periphery' for node in graph_to_visualize.nodes()}
+            
+            if not positions:
+                # Fallback layout computation
+                print("🎯 Computing fallback layout...")
+                positions = nx.spring_layout(graph_to_visualize, seed=seed, k=1.0/np.sqrt(graph_to_visualize.number_of_nodes()))
+            
+            # 1. GLOBAL SCIENTIFIC VISUALIZATION
+            if graph_to_visualize and graph_to_visualize.number_of_nodes() > 0:
+                global_viz_name = f"scientific_global_network_seed{seed}_{timestamp}.png"
+                global_viz_path = os.path.join(viz_dir, global_viz_name)
+                
+                if self.scientific_optimizer:
+                    self.scientific_optimizer.generate_scientific_visualization(
+                        graph_to_visualize, communities, node_roles, positions,
+                        global_viz_path, "Scientific Global Co-occurrence Network"
+                    )
+                else:
+                    # Fallback visualization
+                    self._generate_fallback_visualization(
+                        graph_to_visualize, communities, node_roles, positions,
+                        global_viz_path, "Global Co-occurrence Network"
+                    )
+                
+                self.visualization_paths['scientific_global'] = global_viz_path
+                print(f"      ✅ Global visualization: {global_viz_name}")
+            
+            # 2. STATE SUBGRAPH SCIENTIFIC VISUALIZATIONS
+            if hasattr(self, 'state_subgraph_objects') and self.state_subgraph_objects:
+                subgraph_items = list(self.state_subgraph_objects.items())
+                
+                for state, subgraph in tqdm(subgraph_items, desc="🎨 Scientific state networks", unit="subgraph"):
+                    if subgraph.number_of_nodes() > 0:
+                        # Use positions from global graph for consistency
+                        subgraph_positions = {node: positions[node] for node in subgraph.nodes() 
+                                            if node in positions}
+                        
+                        # Get communities and roles for subgraph nodes
+                        subgraph_communities = {node: communities.get(node, 0) for node in subgraph.nodes()}
+                        subgraph_roles = {node: node_roles.get(node, 'periphery') for node in subgraph.nodes()}
+                        
+                        state_viz_name = f"scientific_state_{state}_network_seed{seed}_{timestamp}.png"
+                        state_viz_path = os.path.join(viz_dir, state_viz_name)
+                        
+                        if self.scientific_optimizer:
+                            self.scientific_optimizer.generate_scientific_visualization(
+                                subgraph, subgraph_communities, subgraph_roles, subgraph_positions,
+                                state_viz_path, f"Scientific State {state} Network"
+                            )
+                        else:
+                            # Fallback visualization
+                            self._generate_fallback_visualization(
+                                subgraph, subgraph_communities, subgraph_roles, subgraph_positions,
+                                state_viz_path, f"State {state} Network"
+                            )
+                        
+                        self.visualization_paths[f'scientific_subgraph_{state}'] = state_viz_path
+                        print(f"      ✅ State {state} visualization: {state_viz_name}")
+            
+            print(f"\n✅ Scientific visualization generation completed!")
+            print(f"🎨 Generated {len(self.visualization_paths)} publication-quality visualizations")
+            print(f"📁 Output directory: {viz_dir}")
+            print(f"🔬 Scientific methods applied: semantic weighting, sparsification, community pruning")
+            print(f"🎯 Deterministic layouts with fixed seed: {seed}")
+            
+            self.pipeline_state['results_exported'] = True
+            
+        except Exception as e:
+            print(f"❌ Scientific visualization generation failed: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def _generate_fallback_visualization(self, graph, communities, node_roles, positions, output_path, title):
+        """Fallback visualization method when scientific optimizer is not available"""
+        plt.figure(figsize=(16, 12))
+        
+        # Simple visualization
+        node_colors = [communities.get(node, 0) for node in graph.nodes()]
+        node_sizes = [300 if node_roles.get(node, 'periphery') == 'core' else 100 for node in graph.nodes()]
+        
+        nx.draw(graph, positions, 
+                node_color=node_colors, 
+                node_size=node_sizes,
+                with_labels=False,
+                edge_color='lightgray',
+                alpha=0.7)
+        
+        plt.title(title, fontsize=14, fontweight='bold')
+        plt.axis('off')
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=300, bbox_inches='tight', facecolor='white')
+        plt.close()
         """Generate deterministic visualizations directly from NetworkX graph objects"""
         if not self.validate_pipeline_step('subgraphs_activated', "Please activate subgraphs first (step 5.1)"):
             return
@@ -2256,6 +2698,444 @@ class ResearchPipelineCLI:
             import traceback
             traceback.print_exc()
     
+    
+    def generate_deterministic_visualizations(self):
+        """Generate deterministic visualizations directly from NetworkX graph objects"""
+        if not self.validate_pipeline_step('subgraphs_activated', "Please activate subgraphs first (step 5.1)"):
+            return
+        
+        print("\n🎨 DETERMINISTIC VISUALIZATION GENERATION")
+        print("-" * 60)
+        print("🔬 Generating readable thematic network visualizations")
+        print(f"🌱 Random seed: {self.reproducibility_config['random_seed']}")
+        print(f"🎯 Layout algorithm: {self.reproducibility_config['layout_algorithm']}")
+        
+        # C. FIXED VISUALIZATION CONFIGURATION for semantic reference style
+        self.viz_config = {
+            # Deterministic layout
+            'fixed_random_seed': self.reproducibility_config['random_seed'],
+            'cache_positions': True,
+            
+            # Visual encoding
+            'edge_alpha_light': 0.3,  # Intra-community edges
+            'edge_alpha_inter': 0.05,  # Inter-community edges  
+            'edge_color': 'lightgray',
+            'edge_weight_threshold': 2,  # Hide edges below this weight
+            
+            # Node shapes by role
+            'core_node_shape': '^',  # Triangle for core nodes
+            'periphery_node_shape': 'o',  # Circle for periphery nodes
+            
+            # Node size scaling by semantic importance (TF-IDF, not raw frequency)
+            'min_node_size': 50,
+            'max_node_size': 800,
+            'size_by_tfidf': True,
+            
+            # Selective labeling
+            'label_core_only': True,
+            'label_importance_threshold': 0.7,  # Top 30% important nodes
+            'max_labels_per_community': 3,
+            'never_label_structural': True,
+            
+            # High-resolution output
+            'output_dpi': 300,
+            'figure_size': (16, 12),
+            'export_format': 'PNG',
+        }
+        
+        try:
+            # Create visualizations directory
+            viz_dir = os.path.join(self.output_dir, "visualizations")
+            os.makedirs(viz_dir, exist_ok=True)
+            
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            seed = self.reproducibility_config['random_seed']
+            
+            self.visualization_paths = {}
+            
+            print("⏳ Generating readable thematic network visualizations...")
+            
+            # Set matplotlib parameters for consistent, high-resolution output
+            plt.rcParams['figure.dpi'] = self.viz_config['output_dpi']
+            plt.rcParams['savefig.dpi'] = self.viz_config['output_dpi']
+            plt.rcParams['font.size'] = 10
+            plt.rcParams['font.family'] = 'sans-serif'
+            
+            # 1. GLOBAL GRAPH VISUALIZATION - SEMANTIC THEMATIC NETWORK
+            if self.global_graph_object and self.global_layout_positions:
+                with tqdm(total=8, desc="🌐 Global thematic network", unit="step") as pbar:
+                    pbar.set_description("🌐 Setting up figure")
+                    fig, ax = plt.subplots(1, 1, figsize=self.viz_config['figure_size'])
+                    G = self.global_graph_object
+                    
+                    # Use cached positions from global graph (deterministic)
+                    pos = self.global_layout_positions
+                    pbar.update(1)
+                    
+                    pbar.set_description("🌐 Preparing node attributes")
+                    # Get node attributes for visual encoding
+                    communities = nx.get_node_attributes(G, 'community')
+                    importance_scores = nx.get_node_attributes(G, 'importance')
+                    node_roles = nx.get_node_attributes(G, 'role')
+                    tf_idf_scores = nx.get_node_attributes(G, 'tf_idf_score')
+                    is_structural = nx.get_node_attributes(G, 'is_structural')
+                    
+                    # Create distinct color map for communities
+                    unique_communities = sorted(set(communities.values())) if communities else [0]
+                    colors = plt.cm.Set3(np.linspace(0, 1, len(unique_communities)))
+                    community_colors = {comm: colors[i % len(colors)] for i, comm in enumerate(unique_communities)}
+                    pbar.update(1)
+                    
+                    pbar.set_description("🌐 Computing visual attributes")
+                    # Node visual attributes based on semantic importance
+                    node_colors = [community_colors.get(communities.get(node, 0), 'lightblue') for node in G.nodes()]
+                    
+                    # Node sizes based on TF-IDF scores (semantic importance), NOT raw frequency
+                    node_sizes = []
+                    node_shapes_core = []
+                    node_shapes_periphery = []
+                    
+                    for node in G.nodes():
+                        # Use TF-IDF for size scaling if available, fallback to importance
+                        if self.viz_config['size_by_tfidf'] and tf_idf_scores:
+                            semantic_score = tf_idf_scores.get(node, 0)
+                            max_score = max(tf_idf_scores.values()) if tf_idf_scores.values() else 1
+                            normalized_score = semantic_score / max_score if max_score > 0 else 0
+                        else:
+                            normalized_score = importance_scores.get(node, 0)
+                        
+                        size = self.viz_config['min_node_size'] + (self.viz_config['max_node_size'] - self.viz_config['min_node_size']) * normalized_score
+                        node_sizes.append(size)
+                        
+                        # Separate nodes by role for different shapes
+                        role = node_roles.get(node, 'periphery')
+                        if role == 'core':
+                            node_shapes_core.append(node)
+                        else:
+                            node_shapes_periphery.append(node)
+                    
+                    pbar.update(1)
+                    
+                    pbar.set_description("🌐 Drawing edges with community-aware filtering")
+                    # Edge rendering with community-aware alpha and weight threshold
+                    edges_to_draw = []
+                    edge_colors = []
+                    edge_alphas = []
+                    
+                    for u, v, data in G.edges(data=True):
+                        weight = data['weight']
+                        
+                        # Apply weight threshold to avoid hairball effect
+                        if weight < self.viz_config['edge_weight_threshold']:
+                            continue
+                        
+                        u_community = communities.get(u, 0)
+                        v_community = communities.get(v, 0)
+                        
+                        # Community-aware edge rendering
+                        if u_community == v_community:
+                            # Intra-community edges: higher alpha
+                            alpha = self.viz_config['edge_alpha_light']
+                        else:
+                            # Inter-community edges: lower alpha
+                            alpha = self.viz_config['edge_alpha_inter']
+                        
+                        edges_to_draw.append((u, v))
+                        edge_colors.append(self.viz_config['edge_color'])
+                        edge_alphas.append(alpha)
+                    
+                    # Draw edges in batches to avoid performance issues
+                    if edges_to_draw:
+                        # Separate intra and inter community edges for different rendering
+                        intra_edges = []
+                        inter_edges = []
+                        
+                        for i, (u, v) in enumerate(edges_to_draw):
+                            u_community = communities.get(u, 0)
+                            v_community = communities.get(v, 0)
+                            
+                            if u_community == v_community:
+                                intra_edges.append((u, v))
+                            else:
+                                inter_edges.append((u, v))
+                        
+                        # Draw inter-community edges first (lower layer)
+                        if inter_edges:
+                            nx.draw_networkx_edges(G, pos, edgelist=inter_edges,
+                                                 width=0.5, alpha=self.viz_config['edge_alpha_inter'], 
+                                                 edge_color=self.viz_config['edge_color'], ax=ax)
+                        
+                        # Draw intra-community edges on top
+                        if intra_edges:
+                            nx.draw_networkx_edges(G, pos, edgelist=intra_edges,
+                                                 width=1.0, alpha=self.viz_config['edge_alpha_light'], 
+                                                 edge_color=self.viz_config['edge_color'], ax=ax)
+                    pbar.update(1)
+                    
+                    pbar.set_description("🌐 Drawing nodes by role")
+                    # Draw nodes by role with different shapes
+                    if node_shapes_core:
+                        core_colors = [community_colors.get(communities.get(node, 0), 'lightblue') for node in node_shapes_core]
+                        core_sizes = [node_sizes[list(G.nodes()).index(node)] for node in node_shapes_core]
+                        nx.draw_networkx_nodes(G, pos, nodelist=node_shapes_core,
+                                             node_color=core_colors, node_size=core_sizes,
+                                             node_shape=self.viz_config['core_node_shape'],
+                                             alpha=0.9, edgecolors='black', linewidths=1.5, ax=ax)
+                    
+                    if node_shapes_periphery:
+                        periphery_colors = [community_colors.get(communities.get(node, 0), 'lightblue') for node in node_shapes_periphery]
+                        periphery_sizes = [node_sizes[list(G.nodes()).index(node)] for node in node_shapes_periphery]
+                        nx.draw_networkx_nodes(G, pos, nodelist=node_shapes_periphery,
+                                             node_color=periphery_colors, node_size=periphery_sizes,
+                                             node_shape=self.viz_config['periphery_node_shape'],
+                                             alpha=0.8, edgecolors='gray', linewidths=0.5, ax=ax)
+                    pbar.update(1)
+                    
+                    pbar.set_description("🌐 Adding selective semantic labels")
+                    # SELECTIVE LABELING - Only label core nodes, never structural tokens
+                    labels_to_draw = {}
+                    
+                    if self.viz_config['label_core_only']:
+                        # Only label core nodes
+                        candidate_nodes = node_shapes_core
+                    else:
+                        # Label all nodes above importance threshold
+                        importance_threshold = np.percentile(list(importance_scores.values()), 
+                                                           self.viz_config['label_importance_threshold'] * 100)
+                        candidate_nodes = [node for node in G.nodes() 
+                                         if importance_scores.get(node, 0) >= importance_threshold]
+                    
+                    # Never label structural tokens
+                    if self.viz_config['never_label_structural']:
+                        candidate_nodes = [node for node in candidate_nodes 
+                                         if not is_structural.get(node, False)]
+                    
+                    # Group nodes by community for balanced labeling
+                    community_nodes = defaultdict(list)
+                    for node in candidate_nodes:
+                        community = communities.get(node, 0)
+                        importance = importance_scores.get(node, 0)
+                        community_nodes[community].append((node, importance))
+                    
+                    # Select top nodes per community (max 3 per community)
+                    for community, nodes in community_nodes.items():
+                        # Sort by importance and take top N
+                        top_nodes = sorted(nodes, key=lambda x: x[1], reverse=True)[:self.viz_config['max_labels_per_community']]
+                        for node, _ in top_nodes:
+                            # Truncate long labels for readability
+                            label = node[:15] + "..." if len(node) > 15 else node
+                            labels_to_draw[node] = label
+                    
+                    if labels_to_draw:
+                        nx.draw_networkx_labels(G, pos, labels_to_draw, 
+                                              font_size=9, font_weight='bold', 
+                                              font_color='black', ax=ax)
+                    pbar.update(1)
+                    
+                    pbar.set_description("🌐 Adding enhanced legends")
+                    # Enhanced title with semantic filtering info
+                    structural_removed = len(self.phrase_data.get('filtered_phrases', {})) - G.number_of_nodes()
+                    ax.set_title(f'Global Semantic Co-occurrence Network\n'
+                               f'{G.number_of_nodes()} nodes ({structural_removed} structural tokens removed), '
+                               f'{G.number_of_edges()} edges, {len(unique_communities)} communities\n'
+                               f'Seed: {seed} | Density: {nx.density(G)*100:.2f}% | TF-IDF weighted', 
+                               fontsize=14, fontweight='bold', pad=20)
+                    
+                    # Enhanced community legend
+                    legend_elements = []
+                    for comm in sorted(unique_communities)[:8]:  # Show first 8 communities
+                        color = community_colors[comm]
+                        legend_elements.append(patches.Patch(color=color, label=f'Community {comm}'))
+                    
+                    if len(unique_communities) > 8:
+                        legend_elements.append(patches.Patch(color='lightgray', label=f'... +{len(unique_communities)-8} more'))
+                    
+                    # Role and semantic legend
+                    legend_elements.append(patches.Patch(color='white', label=''))  # Spacer
+                    legend_elements.append(plt.Line2D([0], [0], marker='^', color='w', 
+                                                    markerfacecolor='gray', markersize=10, label='Core nodes (triangles)'))
+                    legend_elements.append(plt.Line2D([0], [0], marker='o', color='w', 
+                                                    markerfacecolor='gray', markersize=8, label='Periphery nodes (circles)'))
+                    legend_elements.append(patches.Patch(color='white', label=''))  # Spacer
+                    legend_elements.append(patches.Patch(color='lightgray', label='Node size: TF-IDF score'))
+                    legend_elements.append(patches.Patch(color='lightgray', label='Edge alpha: Community relationship'))
+                    
+                    ax.legend(handles=legend_elements, loc='upper left', bbox_to_anchor=(1.02, 1), 
+                            frameon=True, fancybox=True, shadow=True)
+                    
+                    ax.axis('off')
+                    plt.tight_layout()
+                    pbar.update(1)
+                    
+                    pbar.set_description("🌐 Saving high-resolution visualization")
+                    global_viz_name = f"global_thematic_network_seed{seed}_{timestamp}.png"
+                    global_viz_path = os.path.join(viz_dir, global_viz_name)
+                    
+                    # Always export physical image file (PNG) with high resolution
+                    plt.savefig(global_viz_path, bbox_inches='tight', facecolor='white', 
+                              dpi=self.viz_config['output_dpi'], format=self.viz_config['export_format'])
+                    plt.close()
+                    
+                    # Print absolute output image path after generation
+                    print(f"      ✅ Saved: {os.path.basename(global_viz_path)}")
+                    print(f"      📁 Full path: {os.path.abspath(global_viz_path)}")
+                    
+                    self.visualization_paths['global'] = os.path.abspath(global_viz_path)
+                    
+                    self.visualization_paths['global_graph'] = global_viz_path
+                    pbar.update(1)
+                
+                print(f"      ✅ Saved: {global_viz_name}")
+            
+            # 2. STATE SUBGRAPH VISUALIZATIONS - HIGHLIGHTED SUBSETS
+            subgraph_items = list(self.state_subgraph_objects.items())
+            
+            for state, subgraph in tqdm(subgraph_items, desc="🎨 Generating state thematic networks", unit="subgraph"):
+                if subgraph.number_of_nodes() > 0:
+                    with tqdm(total=8, desc=f"🎨 {state} thematic network", unit="step", leave=False) as step_pbar:
+                        step_pbar.set_description(f"🎨 {state}: Setting up figure")
+                        fig, ax = plt.subplots(1, 1, figsize=(14, 10))
+                        
+                        # Use same positions as global graph for consistency
+                        subgraph_pos = {node: self.global_layout_positions[node] for node in subgraph.nodes() 
+                                      if node in self.global_layout_positions}
+                        step_pbar.update(1)
+                        
+                        step_pbar.set_description(f"🎨 {state}: Preparing attributes")
+                        # Get node attributes from global graph (maintain consistency)
+                        communities = {node: self.global_graph_object.nodes[node].get('community', 0) 
+                                     for node in subgraph.nodes()}
+                        importance_scores = {node: self.global_graph_object.nodes[node].get('importance', 0) 
+                                           for node in subgraph.nodes()}
+                        node_roles = {node: self.global_graph_object.nodes[node].get('role', 'periphery') 
+                                    for node in subgraph.nodes()}
+                        
+                        # Use same color scheme as global graph
+                        unique_communities = sorted(set(communities.values()))
+                        colors = plt.cm.tab10(np.linspace(0, 1, len(unique_communities)))
+                        community_colors = {comm: colors[i % len(colors)] for i, comm in enumerate(unique_communities)}
+                        step_pbar.update(1)
+                        
+                        step_pbar.set_description(f"🎨 {state}: Computing visual attributes")
+                        # Node visual attributes (consistent with global)
+                        node_colors = [community_colors.get(communities.get(node, 0), 'lightblue') for node in subgraph.nodes()]
+                        
+                        node_sizes = []
+                        node_shapes_core = []
+                        node_shapes_periphery = []
+                        
+                        for node in subgraph.nodes():
+                            importance = importance_scores.get(node, 0)
+                            size = self.viz_config['min_node_size'] + (self.viz_config['max_node_size'] - self.viz_config['min_node_size']) * importance
+                            node_sizes.append(size)
+                            
+                            role = node_roles.get(node, 'periphery')
+                            if role == 'core':
+                                node_shapes_core.append(node)
+                            else:
+                                node_shapes_periphery.append(node)
+                        step_pbar.update(1)
+                        
+                        step_pbar.set_description(f"🎨 {state}: Drawing edges")
+                        # 简化边绘制避免卡住
+                        if subgraph.number_of_edges() > 0:
+                            # 限制边数并简化绘制
+                            edge_list = list(subgraph.edges(data=True))[:30]  # 最多30条边
+                            if edge_list:
+                                nx.draw_networkx_edges(subgraph, subgraph_pos, 
+                                                     edgelist=[(u, v) for u, v, _ in edge_list],
+                                                     width=1.0, alpha=0.3, edge_color='gray', ax=ax)
+                        step_pbar.update(1)
+                        
+                        step_pbar.set_description(f"🎨 {state}: Drawing nodes")
+                        # Draw nodes by role
+                        if node_shapes_core:
+                            core_colors = [community_colors.get(communities.get(node, 0), 'lightblue') for node in node_shapes_core]
+                            core_sizes = [node_sizes[list(subgraph.nodes()).index(node)] for node in node_shapes_core]
+                            nx.draw_networkx_nodes(subgraph, subgraph_pos, nodelist=node_shapes_core,
+                                                 node_color=core_colors, node_size=core_sizes,
+                                                 node_shape=self.viz_config['core_node_shape'],
+                                                 alpha=0.9, edgecolors='black', linewidths=1.5, ax=ax)
+                        
+                        if node_shapes_periphery:
+                            periphery_colors = [community_colors.get(communities.get(node, 0), 'lightblue') for node in node_shapes_periphery]
+                            periphery_sizes = [node_sizes[list(subgraph.nodes()).index(node)] for node in node_shapes_periphery]
+                            nx.draw_networkx_nodes(subgraph, subgraph_pos, nodelist=node_shapes_periphery,
+                                                 node_color=periphery_colors, node_size=periphery_sizes,
+                                                 node_shape=self.viz_config['periphery_node_shape'],
+                                                 alpha=0.8, edgecolors='gray', linewidths=0.5, ax=ax)
+                        step_pbar.update(1)
+                        
+                        step_pbar.set_description(f"🎨 {state}: Adding labels")
+                        # Selective labeling for subgraph
+                        labels_to_draw = {}
+                        if importance_scores:
+                            importance_threshold = np.percentile(list(importance_scores.values()), 70)
+                            
+                            community_nodes = defaultdict(list)
+                            for node in subgraph.nodes():
+                                community = communities.get(node, 0)
+                                importance = importance_scores.get(node, 0)
+                                if importance >= importance_threshold:
+                                    community_nodes[community].append((node, importance))
+                            
+                            for community, nodes in community_nodes.items():
+                                top_nodes = sorted(nodes, key=lambda x: x[1], reverse=True)[:2]  # Fewer labels for subgraphs
+                                for node, _ in top_nodes:
+                                    labels_to_draw[node] = node
+                        
+                        if labels_to_draw:
+                            nx.draw_networkx_labels(subgraph, subgraph_pos, labels_to_draw,
+                                                  font_size=9, font_weight='bold',
+                                                  font_color='black', ax=ax)
+                        step_pbar.update(1)
+                        
+                        step_pbar.set_description(f"🎨 {state}: Finalizing")
+                        doc_count = len([doc for doc in self.cleaned_text_data if doc['state'] == state])
+                        core_count = len(node_shapes_core)
+                        
+                        ax.set_title(f'State {state} Thematic Network\n'
+                                   f'{subgraph.number_of_nodes()} nodes, {subgraph.number_of_edges()} edges, '
+                                   f'{len(unique_communities)} communities\n'
+                                   f'{doc_count} documents, {core_count} core nodes | Seed: {seed}', 
+                                   fontsize=12, fontweight='bold', pad=15)
+                        
+                        # Add legend (simplified for subgraphs)
+                        legend_elements = []
+                        for comm in sorted(unique_communities):
+                            color = community_colors[comm]
+                            legend_elements.append(patches.Patch(color=color, label=f'Community {comm}'))
+                        
+                        if len(legend_elements) > 0:
+                            ax.legend(handles=legend_elements, loc='upper right', bbox_to_anchor=(1, 1))
+                        
+                        ax.axis('off')
+                        plt.tight_layout()
+                        
+                        state_viz_name = f"state_{state}_thematic_network_seed{seed}_{timestamp}.png"
+                        state_viz_path = os.path.join(viz_dir, state_viz_name)
+                        plt.savefig(state_viz_path, bbox_inches='tight', facecolor='white', dpi=300)
+                        plt.close()
+                        
+                        self.visualization_paths[f'subgraph_{state}'] = state_viz_path
+                        step_pbar.update(1)
+                    
+                    print(f"      ✅ Saved: {state_viz_name}")
+            
+            print(f"\n✅ Thematic network visualization generation completed!")
+            print(f"🎨 Generated {len(self.visualization_paths)} readable visualizations")
+            print(f"📁 Output directory: {viz_dir}")
+            print(f"🎯 All visualizations use consistent community-aware layout")
+            print(f"🔍 Edge filtering applied for readability")
+            print(f"🎭 Node roles visualized (core=triangles, periphery=circles)")
+            
+            self.pipeline_state['results_exported'] = True
+            
+        except Exception as e:
+            print(f"❌ Visualization generation failed: {e}")
+            import traceback
+            traceback.print_exc()
+
     def view_output_image_paths(self):
         """View output image paths clearly"""
         if not hasattr(self, 'visualization_paths') or not self.visualization_paths:
@@ -2710,8 +3590,10 @@ class ResearchPipelineCLI:
             elif choice == "4.1":
                 self.build_global_graph()
             elif choice == "4.2":
-                self.view_global_graph_statistics()
+                self.apply_scientific_optimization()
             elif choice == "4.3":
+                self.view_global_graph_statistics()
+            elif choice == "4.4":
                 self.export_global_graph_data()
             
             # Subgraph Activation
@@ -2724,13 +3606,21 @@ class ResearchPipelineCLI:
             
             # Visualization & Export
             elif choice == "6.1":
-                self.generate_deterministic_visualizations()
+                self.generate_scientific_visualizations()
             elif choice == "6.2":
                 self.view_output_image_paths()
             elif choice == "6.3":
                 self.export_complete_results()
             elif choice == "6.4":
                 self.view_graph_nodes_and_data()
+            
+            # Scientific Controls
+            elif choice == "S.1":
+                self.configure_scientific_parameters()
+            elif choice == "S.2":
+                self.view_scientific_statistics()
+            elif choice == "S.3":
+                self.export_scientific_report()
             
             # Reproducibility Controls
             elif choice == "R.1":

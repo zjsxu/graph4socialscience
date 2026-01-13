@@ -1,0 +1,29 @@
+[
+  {
+    "segment_id": "sample_001",
+    "title": "Introduction to Network Analysis",
+    "level": 1,
+    "order": 1,
+    "text": "Network analysis is a powerful method for understanding complex relationships in data. This approach allows researchers to visualize and analyze connections between entities.",
+    "state": "CA",
+    "language": "en"
+  },
+  {
+    "segment_id": "sample_002",
+    "title": "Graph Theory Fundamentals",
+    "level": 2,
+    "order": 2,
+    "text": "Graph theory provides the mathematical foundation for network analysis. Nodes represent entities while edges represent relationships between them.",
+    "state": "CA",
+    "language": "en"
+  },
+  {
+    "segment_id": "sample_003",
+    "title": "网络分析基础",
+    "level": 1,
+    "order": 3,
+    "text": "网络分析是研究复杂系统中实体间关系的重要方法。通过图论的数学工具，我们可以深入理解社会网络、生物网络等复杂系统的结构特征。",
+    "state": "NY",
+    "language": "zh"
+  }
+]

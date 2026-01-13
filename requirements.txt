@@ -34,4 +34,4 @@ pyyaml>=5.4.0
 
 # 性能分析（可选）
 memory-profiler>=0.58.0
-line-profiler>=3.3.0
+line-profiler>=3.3.0\ntqdm>=4.62.0
