@@ -34,14 +34,18 @@ def simulate_fresh_clone():
             'install.py',
             'quick_start.py',
             'complete_usage_guide.py',
-            'check_reproducibility.py'
+            'check_reproducibility.py',
+            'demo.py',
+            'scientific_graph_optimizer.py'
         ]
         
         key_dirs = [
             'data',
             'config',
             'semantic_coword_pipeline',
-            'tests'
+            'tests',
+            'docs',
+            'test_input'
         ]
         
         for file in key_files:
